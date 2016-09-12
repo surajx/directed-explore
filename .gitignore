@@ -27,3 +27,12 @@
 *.exe
 *.out
 *.app
+
+# Python
+*.pyc
+env/
+
+# Editors
+# VS Code
+.vscode/
+
