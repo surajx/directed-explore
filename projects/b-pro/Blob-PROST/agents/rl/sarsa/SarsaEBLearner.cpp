@@ -18,6 +18,7 @@
 #include <stdio.h>
 #include <math.h>
 #include <set>
+#include <random>
 
 #include <algorithm>
 
@@ -34,7 +35,8 @@ SarsaEBLearner::SarsaEBLearner(ALEInterface& ale,
   kappa = param->getKappa();
   is_min_prob_activated = false;
 
-  init_w_value = beta / (sqrt(kappa) * (1 - gamma));
+  // init_w_value = beta / (sqrt(kappa) * (1 - gamma));
+  init_w_value = beta / sqrt(kappa);
 
   for (int i = 0; i < numActions; i++) {
     // Initialize Q;
@@ -311,8 +313,8 @@ double SarsaEBLearner::exploration_bonus(vector<long long>& features,
       1.0 / (exp(log_joint_phi_action_prime - log_joint_phi_action) - 1);
 
   // push the exploration bonus to the output vector.
-  printf("log_joint_phi_action_prime: %f\n", log_joint_phi_action_prime);
-  printf("log_joint_phi_action[%d]: %f\n", action, log_joint_phi_action);
+  // printf("log_joint_phi_action_prime: %f\n", log_joint_phi_action_prime);
+  // printf("log_joint_phi_action[%d]: %f\n", action, log_joint_phi_action);
   printf("pseudo_count[%d]: %.20f\n", action, pseudo_count);
   return beta / sqrt(pseudo_count + kappa);
 }
@@ -359,19 +361,39 @@ int SarsaEBLearner::optimisticEpsilonQI(vector<float>& QValues,
   if ((random % int(nearbyint(1.0 / epsilon))) == 0) {
     // if((rand()%int(1.0/epsilon)) == 0){
     randomActionTaken = 1;
-    vector<float> neqQIValues;
-    for (int i = 0; i < QIValues.size(); i++) {
-      if (QIValues[i] < 0) {
-        neqQIValues.push_back(QIValues[i]);
-      }
-    }
-    if (neqQIValues.size() > 0) {
-      printf("Using negative values to take epsilon action\n");
-      action = Mathematics::argmax(neqQIValues, agentRand);
-    } else {
-      action = Mathematics::argmax(QIValues, agentRand);
-    }
+    action = boltzmannQI(QIValues, agentRand);
   }
+  return action;
+}
+
+int SarsaEBLearner::boltzmannQI(vector<float>& QIvalues,
+                                std::mt19937* randAgent) {
+  double max = QIvalues[0];
+  double min = QIvalues[0];
+  vector<double> weights(QIvalues.size());
+  for (float q : QIvalues) {
+    if (max < q)
+      max = q;
+    if (min > q)
+      min = q;
+  }
+  double tau = fabs(max - min);
+
+  for (int idx = 0; idx < QIvalues.size(); idx++) {
+    weights[idx] = exp(QIvalues[idx] / tau);
+  }
+
+  printf("tau: %f\n", tau);
+  // printf("maxQI: %f\n", max);
+  // printf("minQI: %f\n", min);
+  // printf("QIVal size: %d\n", QIvalues.size());
+
+  std::discrete_distribution<int> boltDist(weights.begin(), weights.end());
+
+  int action = boltDist(*agentRand);
+  randomActionTaken = 1;
+  printf("Random action number is: %d \n", action);
+
   return action;
 }
 
@@ -400,7 +422,8 @@ void SarsaEBLearner::learnPolicy(ALEInterface& ale, Features* features) {
   }
 
   // Repeat (for each episode):
-  // This is going to be interrupted by the ALE code since I set max_num_frames
+  // This is going to be interrupted by the ALE code since I set
+  // max_num_frames
   // beforehand
   for (int episode = episodePassed + 1;
        totalNumberFrames < totalNumberOfFramesToLearn; episode++) {
@@ -460,9 +483,9 @@ void SarsaEBLearner::learnPolicy(ALEInterface& ale, Features* features) {
         Fnext.clear();
         features->getActiveFeaturesIndices(ale.getScreen(), ale.getRAM(),
                                            Fnext);
-        if (Fnext == tmp_F) {
-          printf("Both sates are same\n");
-        }
+        // if (Fnext == tmp_F) {
+        //   // printf("Both sates are same\n");
+        // }
         tmp_F = Fnext;
         trueFnextSize = Fnext.size();
         groupFeatures(Fnext);
@@ -491,7 +514,7 @@ void SarsaEBLearner::learnPolicy(ALEInterface& ale, Features* features) {
       if (trueFeatureSize > maxFeatVectorNorm) {
         maxFeatVectorNorm = trueFeatureSize;
         learningRate = alpha / maxFeatVectorNorm;
-        QI_learningRate = QI_alpha / maxFeatVectorNorm;
+        // QI_learningRate = QI_alpha / maxFeatVectorNorm;
       }
       if (!is_min_prob_activated) {
         delta = reward[0] + gamma * Qnext[nextAction] - Q[currentAction];
@@ -501,14 +524,14 @@ void SarsaEBLearner::learnPolicy(ALEInterface& ale, Features* features) {
         QI_delta = 0;
         is_min_prob_activated = false;
       }
-      printf("delta: %f\n", delta);
-      printf("QI_delta: %f\n", QI_delta);
+      // printf("delta: %f\n", delta);
+      // printf("QI_delta: %f\n", QI_delta);
       // Update weights vector:
       for (unsigned int a = 0; a < nonZeroElig.size(); a++) {
         for (unsigned int i = 0; i < nonZeroElig[a].size(); i++) {
           long long idx = nonZeroElig[a][i];
           w[a][idx] = w[a][idx] + learningRate * delta * e[a][idx];
-          QI_w[a][idx] = QI_w[a][idx] + QI_learningRate * QI_delta * e[a][idx];
+          QI_w[a][idx] = QI_w[a][idx] + learningRate * QI_delta * e[a][idx];
         }
       }
       F = Fnext;

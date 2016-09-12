@@ -148,6 +148,8 @@ class SarsaEBLearner : public SarsaLearner {
                           vector<float>& QIValues,
                           int episode);
 
+  int boltzmannQI(vector<float>& QIvalues, std::mt19937* randAgent);
+
  public:
   /**
   *   Initialize everything required for SarsaLearner.
