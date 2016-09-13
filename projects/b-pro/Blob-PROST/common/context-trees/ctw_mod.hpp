@@ -22,6 +22,8 @@ class CTNode {
   /// process a new binary symbol
   void update(bit_t b, bool skip);
 
+  void updateFirst(bit_t b, bool skip, double init_log_prob_kt, long time_step);
+
   /// log weighted blocked probability
   weight_t logProbWeighted() const;
 
@@ -79,11 +81,28 @@ class ContextTree : public Compressor, boost::noncopyable {
   /// process a new piece of sensory experience
   void update(bit_t b);
 
+  void updateFirst(bit_t b, double init_log_prob_kt, long time_step);
+
   /// the depth of the context tree
   size_t depth() const;
 
   /// number of nodes in the context tree
   size_t size() const;
+
+  void initFeatureData(int numActions, long time_step);
+
+  double getP_AGivenPhi_forAction(int action);
+
+  void updateP_AGivenPhi(int numActions, int action, long time_step);
+
+  void setIsChecked(bool is_checked);
+
+  bool getIsChecked();
+
+  struct FeatureData {
+    bool is_checked;
+    vector<double> p_a_phi;
+  };
 
  private:
   // recover the memory used by a node
@@ -105,6 +124,7 @@ class ContextTree : public Compressor, boost::noncopyable {
   int m_phase;
   size_t m_depth;
   history_t& m_history;
+  FeatureData featureData;
 };
 
 #endif  // __CTW_MOD_HPP__

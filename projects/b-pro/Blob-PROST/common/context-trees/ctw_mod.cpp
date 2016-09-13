@@ -205,6 +205,63 @@ void ContextTree::update(bit_t b) {
   m_history.push_back(b != 0);
 }
 
+/* updates the context tree with a single bit */
+void ContextTree::updateFirst(bit_t b, double init_log_prob_kt) {
+  // compute the current context
+  context_t context;
+  context.reserve(m_depth);
+  getContext(m_history, context);
+
+  // 1. create new nodes in the context tree (if necessary)
+  createNodesInCurrentContext(context);
+
+  // 2. walk down the tree to the relevant leaf, saving the path as we go
+  std::stack<CTNode*, std::vector<CTNode*> > path;
+  path.push(m_root);  // add the empty context
+  CTNode* ctn = m_root;
+  for (size_t i = 0; i < context.size(); i++) {
+    ctn = ctn->m_child[context[i]];
+    path.push(ctn);
+  }
+
+  // 3. update the probability estimates from the leaf node back up to the root
+  int index = static_cast<int>(m_depth);
+  for (; !path.empty(); path.pop()) {
+    bool skip = UseWeightingOnlyAtByteBoundaries && m_phase > -1 &&
+                (index % 8) != m_phase && index != 0;
+    path.top()->updateFirst(b, skip, init_log_prob_kt);
+    index--;
+  }
+
+  // 4. update the history
+  m_history.push_back(b != 0);
+}
+
+/* process a new binary symbol */
+void CTNode::updateFirst(bit_t b,
+                         bool skip,
+                         double init_log_prob_kt,
+                         long time_step) {
+  // update the KT estimate and counts
+  m_count[0] = time_step;
+  double log_kt_mul = logKTMul(b);
+  m_log_prob_est += init_log_prob_kt;
+  m_log_prob_est += log_kt_mul;
+  m_count[b]++;
+
+  if (isLeaf()) {
+    m_log_prob_weighted = logProbEstimated();
+  } else {
+    if (skip) {
+      double log_prob_on = child(1) ? child(1)->logProbWeighted() : 0.0;
+      double log_prob_off = child(0) ? child(0)->logProbWeighted() : 0.0;
+      m_log_prob_weighted = log_prob_on + log_prob_off;
+    } else {
+      updateWeighted();
+    }
+  }
+}
+
 /* the probability of seeing a particular symbol next */
 double ContextTree::prob(bit_t b) {
   typedef std::pair<CTNode*, CTNode> ctpair_t;
@@ -337,4 +394,35 @@ void ContextTree::reclaimMemory(CTNode* n) {
 /* the logarithm of the block probability of the whole sequence */
 double ContextTree::logBlockProbability(void) const {
   return m_root->logProbWeighted();
+}
+
+void ContextTree::initFeatureData(int numActions, long time_step) {
+  featureData.is_checked = false;
+  for (int i = 0; i < numActions; i++) {
+    featureData.push_back(1.0 / numActions);
+  }
+}
+
+bool ContextTree::getIsChecked() {
+  return featureData.is_checked;
+}
+
+void ContextTree::setIsChecked(bool is_checked) {
+  featureData.is_checked = is_checked;
+}
+
+void ContextTree::updateP_AGivenPhi(int numActions,
+                                    int action,
+                                    long time_step) {
+  for (int a = 0; a < numActions; a++) {
+    featureData.p_a_phi[a] *=
+        (featureData.num_active + 1.0) / (featureData.num_active + 2);
+    if (a == action) {
+      featureData.p_a_phi[a] += (1.0 / (featureData.num_active + 2));
+    }
+  }
+}
+
+double ContextTree::getP_AGivenPhi_forAction(int action) {
+  return featureData.p_a_phi[action];
 }
