@@ -11,10 +11,12 @@
 #ifndef SARSAEBLEARNER_H
 #define SARSAEBLEARNER_H
 #include "SarsaLearner.hpp"
+#include "../../../common/context-trees/ctw_mod.hpp"
 #endif
 #include <vector>
 #include <unordered_map>
 #include <limits>
+#include <math.h>
 
 using namespace std;
 
@@ -38,6 +40,13 @@ class SarsaEBLearner : public SarsaLearner {
   int NUM_PHI_OFFSET;
 
   const double MIN_PROB = std::numeric_limits<double>::min();  // 1e-9;
+
+  // context trees
+  double log_prob_kt_t_0 = log(0.5);
+  const int ct_depth = 10;
+  unordered_map<long long, Compressor> feature_context_trees;
+
+  Compressor* zeroCTPrototype;
 
   /**
    * Constructor declared as private to force the user to instantiate

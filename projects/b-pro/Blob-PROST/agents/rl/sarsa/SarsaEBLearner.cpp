@@ -53,6 +53,31 @@ SarsaEBLearner::SarsaEBLearner(ALEInterface& ale,
   NUM_PHI_OFFSET = ACTION_OFFSET + numActions;
 }
 
+void SarsaEBLearner::initCTForFeature(long long feature, long time_step) {
+  // Initialize history
+  history_t h;
+  h.clear();
+  for (size_t i = 0; i < ct_depth; ++i)
+    h.push_back(0);
+
+  // Create Context Tree
+  Compressor* ct = new ContextTree(history, ct_depth);
+  ct->initFeatureData(numActions, time_step);
+  feature_context_trees[feature] = ct;
+}
+
+void SarsaEBLearner::initZeroCTPrototype(long time_step) {
+  // Initialize history
+  history_t h;
+  h.clear();
+  for (size_t i = 0; i < ct_depth; ++i)
+    h.push_back(0);
+
+  // Create Context Tree
+  zeroCTPrototype = new ContextTree(history, ct_depth);
+  zeroCTPrototype->initFeatureData(numActions, time_step);
+}
+
 void SarsaEBLearner::updateQIValues(vector<long long>& Features,
                                     vector<float>& QValues) {
   unsigned long long featureSize = Features.size();
@@ -65,7 +90,7 @@ void SarsaEBLearner::updateQIValues(vector<long long>& Features,
   }
 }
 
-void SarsaEBLearner::update_action_marginals(int cur_action, int time_step) {
+void SarsaEBLearner::update_action_marginals(int cur_action, long time_step) {
   for (int action = 0; action < numActions; action++) {
     actionMarginals[action] *= (time_step + 1.0) / (time_step + 2);
     if (action == cur_action) {
@@ -319,6 +344,126 @@ double SarsaEBLearner::exploration_bonus(vector<long long>& features,
   return beta / sqrt(pseudo_count + kappa);
 }
 
+double SarsaEBLearner::get_joint_prob_phi_from_CT(vector<long long>& features,
+                                                  long time_step) {
+  // For each features get logProb from context tree and take sum to get the
+  // joint.
+
+  double sum_log_phi = 0;
+  for (long long featIdx : features) {
+    if (feature_context_trees.find(featIdx) == feature_context_trees.end()) {
+      initCTForFeature(featIdx);
+      feature_context_trees[feature].initFeatureData(numActions, time_step);
+    }
+
+    // p(phi_i=1)
+    sum_log_phi += feature_context_trees[featIdx].logProb(1);
+    feature_context_trees[featIdx]->setFeatureChecked(true);
+  }
+
+  // p(phi_i=0)
+  for (auto it = feature_context_trees.begin();
+       it != feature_context_trees.end(); ++it) {
+    if (!it->second.isFeatureChecked()) {
+      sum_log_phi += feature_context_trees[featIdx].logProb(0);
+    } else {
+      // Reset the seen features to unseen as its update has already been
+      // done.
+      feature_context_trees[featIdx]->setFeatureChecked(true);
+    }
+  }
+
+  return sum_log_phi;
+}
+
+double SarsaEBLearner::get_sum_log_action_given_phi_from_CT(
+    vector<long long>& features,
+    int action,
+    long time_step) {
+  double sum_log_action_given_phi = 0;
+
+  // ASSUMPTION: New CT has been added to feature_context_trees in function
+  //  get_joint_prob_phi_from_CT
+
+  for (long long featIdx : features) {
+    // p(a=cur_act/phi_i=1)
+    sum_log_action_given_phi +=
+        log(feature_context_trees[featIdx]->getP_AGivenPhi_forAction(action));
+
+    // Set the feature as seen.
+    feature_context_trees[featIdx]->setFeatureChecked(true);
+  }
+  double tmp;
+  // p(a=cur_act/phi_i=0) =
+  //        (p(a=cur_act) - p(a=cur_act/phi_i=1)*p(phi_i=1))/(1-phi_i=1)
+  for (auto it = context_featureProbs.begin(); it != context_featureProbs.end();
+       ++it) {
+    // Update the probabilities for the inactive features.
+    if (!it->second.isFeatureChecked()) {
+      // TODO: fix underfow issue, and address nan! Still might happen.
+      tmp = log(actionMarginals[action] -
+                (feature_context_trees[featIdx].prob(1) *
+                 feature_context_trees[featIdx]->getP_AGivenPhi_forAction(
+                     action))) -
+            log(feature_context_trees[featIdx].logProb(0));
+      if (tmp != tmp) {
+        // printf("(1.2) Crazy difference: %.10f\n",
+        //        actionMarginals[action] -
+        //            (it->second[0] * it->second[action + ACTION_OFFSET]));
+        // printf("(1.3) log(1-p(phi=1)): %f\n", log(1 - it->second[0]));
+        // printf("(1.4) p(a)[%d]: %f\n", action, actionMarginals[action]);
+        // printf("(1.5) p(a,phi=1)[%d]: %f\n", action,
+        //        (it->second[0] * it->second[action + ACTION_OFFSET]));
+        // printf("(1.6) p(phi=1)[%d]: %f\n", action, it->second[0]);
+        // printf("(1.7) p(a/phi=1)[%d]: %f\n", action,
+        //        it->second[action + ACTION_OFFSET]);
+        for (int i = 0; i < 5; i++) {
+          printf("#################MIN PROB HACK ACTIVATED#################\n");
+        }
+        printf("[BEFORE] p(phi): %.10f\n", it->second[0]);
+        it->second[0] = (actionMarginals[action] - MIN_PROB) /
+                        (it->second[action + ACTION_OFFSET]);
+        printf("[AFTER] p(phi): %.10f\n", it->second[0]);
+        for (int i = 0; i < 5; i++) {
+          printf("####################MIN PROB HACK END####################\n");
+        }
+        // printf("(1.8) p(phi=1)[%d]: %f\n", action,
+        //        it->second[action + ACTION_OFFSET]);
+        tmp = log(MIN_PROB) - log(1 - it->second[0]);
+        is_min_prob_activated = true;
+      }
+      sum_log_action_given_phi += tmp;
+
+    } else {
+      // Reset the seen features to unseen as its update has already been done.
+      it->second[1] = 0;
+    }
+  }
+
+  return sum_log_action_given_phi;
+}
+
+double SarsaEBLearner::ct_exploration_bonus(vector<long long>& features,
+                                            long time_step,
+                                            int action) {
+  // Calculate p(phi) from context trees.
+  double sum_log_rho_phi = get_joint_prob_phi_from_CT(features, time_step);
+
+  // calculate p(a/phi) normally first then modify context trees.
+
+  // Update context tree.
+
+  // calculate p'(phi)
+  // For each features get logProb from updated context tree and take sum to get
+  // the joint.
+
+  // calculate p'(a/phi) normally first then modify context trees.
+
+  // Calculate pseudo count as (1/(exp(p(phi') - p(phi)))-1))
+
+  // return  beta / sqrt(pseudo_count + kappa);
+}
+
 int SarsaEBLearner::epsilonQI(vector<float>& QValues,
                               vector<float>& QIValues,
                               int episode) {
@@ -462,6 +607,9 @@ void SarsaEBLearner::learnPolicy(ALEInterface& ale, Features* features) {
     // Repeat(for each step of episode) until game is over:
     // This also stops when the maximum number of steps per episode is reached
     while (!ale.game_over()) {
+      // Update P_{KT}(t,0) probability
+      log_prob_kt_t_0 += log(time_step + 0.5) - log(time_step + 1);
+
       reward.clear();
       reward.push_back(0.0);
       reward.push_back(0.0);

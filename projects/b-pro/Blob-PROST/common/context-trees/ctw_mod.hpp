@@ -95,9 +95,9 @@ class ContextTree : public Compressor, boost::noncopyable {
 
   void updateP_AGivenPhi(int numActions, int action, long time_step);
 
-  void setIsChecked(bool is_checked);
+  void setFeatureChecked(bool is_checked);
 
-  bool getIsChecked();
+  bool isFeatureChecked();
 
   struct FeatureData {
     bool is_checked;

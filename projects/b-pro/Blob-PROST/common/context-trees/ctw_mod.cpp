@@ -403,11 +403,11 @@ void ContextTree::initFeatureData(int numActions, long time_step) {
   }
 }
 
-bool ContextTree::getIsChecked() {
+bool ContextTree::isFeatureChecked() {
   return featureData.is_checked;
 }
 
-void ContextTree::setIsChecked(bool is_checked) {
+void ContextTree::setFeatureChecked(bool is_checked) {
   featureData.is_checked = is_checked;
 }
 
