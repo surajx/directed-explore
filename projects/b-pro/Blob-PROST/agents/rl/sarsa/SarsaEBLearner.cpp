@@ -13,6 +13,13 @@
 #define TIMER_H
 #include "../../../common/Timer.hpp"
 #include "../../../common/Mathematics.hpp"
+#include "../../../common/context-trees/ctw_mod.hpp"
+#include "../../../common/context-trees/common_mod.hpp"
+
+#include <boost/program_options.hpp>
+#include <boost/progress.hpp>
+#include <boost/filesystem/operations.hpp>
+
 #endif
 #include "SarsaEBLearner.hpp"
 #include <stdio.h>
@@ -23,6 +30,7 @@
 #include <algorithm>
 
 using namespace std;
+namespace po = boost::program_options;
 
 SarsaEBLearner::SarsaEBLearner(ALEInterface& ale,
                                Features* features,
@@ -33,10 +41,10 @@ SarsaEBLearner::SarsaEBLearner(ALEInterface& ale,
   beta = param->getBeta();
   sigma = param->getSigma();
   kappa = param->getKappa();
-  is_min_prob_activated = false;
 
   // init_w_value = beta / (sqrt(kappa) * (1 - gamma));
-  init_w_value = beta / sqrt(kappa);
+  // TODO: talk about initialization
+  // init_w_value = beta / sqrt(kappa);
 
   for (int i = 0; i < numActions; i++) {
     // Initialize Q;
@@ -45,37 +53,11 @@ SarsaEBLearner::SarsaEBLearner(ALEInterface& ale,
     // Initialize w:
     QI_w.push_back(vector<float>());
   }
-
-  actionMarginals.clear();
-  featureProbs.clear();
-  featureProbs.reserve(60000);
-
-  NUM_PHI_OFFSET = ACTION_OFFSET + numActions;
 }
 
-void SarsaEBLearner::initCTForFeature(long long feature, long time_step) {
-  // Initialize history
-  history_t h;
-  h.clear();
-  for (size_t i = 0; i < ct_depth; ++i)
-    h.push_back(0);
-
-  // Create Context Tree
-  Compressor* ct = new ContextTree(history, ct_depth);
-  ct->initFeatureData(numActions, time_step);
+void SarsaEBLearner::initCTForFeature(long long feature) {
+  Compressor* ct = new ContextTree(ct_depth);
   feature_context_trees[feature] = ct;
-}
-
-void SarsaEBLearner::initZeroCTPrototype(long time_step) {
-  // Initialize history
-  history_t h;
-  h.clear();
-  for (size_t i = 0; i < ct_depth; ++i)
-    h.push_back(0);
-
-  // Create Context Tree
-  zeroCTPrototype = new ContextTree(history, ct_depth);
-  zeroCTPrototype->initFeatureData(numActions, time_step);
 }
 
 void SarsaEBLearner::updateQIValues(vector<long long>& Features,
@@ -90,378 +72,61 @@ void SarsaEBLearner::updateQIValues(vector<long long>& Features,
   }
 }
 
-void SarsaEBLearner::update_action_marginals(int cur_action, long time_step) {
-  for (int action = 0; action < numActions; action++) {
-    actionMarginals[action] *= (time_step + 1.0) / (time_step + 2);
-    if (action == cur_action) {
-      actionMarginals[action] += 1.0 / (time_step + 2);
-    }
-  }
-}
-
-void SarsaEBLearner::update_phi(vector<long long>& features, long time_step) {
-  // Updating the p(phi) and p(a/phi)
-  // p(phi)  : rho_{t+1} = ((rho_t * (t + 1)) + phi_{t + 1}) / (t + 2)
-
-  // Partial Update for all the seen features.
-  // rho_{t+1}^' = rho_t * (t + 1) / (t + 2)
-  for (auto it = featureProbs.begin(); it != featureProbs.end(); ++it) {
-    it->second[0] *= ((time_step + 1.0) / (time_step + 2));
-  }
-
-  // Partial Update only for all the currently active features.
-  // rho_{t + 1} = rho_{t + 1}^'  + (phi_{t + 1} / (t + 2))
-  for (long long featIdx : features) {
-    featureProbs[featIdx][0] += (1.0 / (time_step + 2));
-  }
-}
-
-void SarsaEBLearner::update_action_given_phi(
-    unordered_map<long long, vector<double>>& tmp_featureProbs,
-    vector<long long>& features,
-    int action,
-    long time_step) {
-  // p(a/phi): p_{t + 1}(a / phi) =
-  //    p_t * (n_{phi} + 1) / (n_{phi} + 2) + I[a = cur_act] / (n_{phi} + 2)
-  double n_phi = 0;
-  for (long long featIdx : features) {
-    n_phi = tmp_featureProbs[featIdx][NUM_PHI_OFFSET];
-    for (int a = 0; a < numActions; a++) {
-      tmp_featureProbs[featIdx][a + ACTION_OFFSET] *=
-          (n_phi + 1.0) / (n_phi + 2);
-      if (a == action) {
-        tmp_featureProbs[featIdx][a + ACTION_OFFSET] += (1.0 / (n_phi + 2));
-      }
-    }
-  }
-}
-
-void SarsaEBLearner::add_new_feature_to_map(long long featIdx, int time_step) {
-  // Creating new vector to store needed data for active feature.
-  vector<double> v(ACTION_OFFSET + numActions + 1);
-  v[0] = 1.001 / (time_step + 1);
-  v[1] = 0;
-
-  // p(a=cur_act/phi_i=1) = \frac{n_{cur_act} + (1/numActions)}{n_phi + 1}
-  // Here, n_{a} = 0
-  for (int action = 0; action < numActions; action++) {
-    v[action + ACTION_OFFSET] = 1.0 / numActions;
-  }
-  v[NUM_PHI_OFFSET] = 0;
-  featureProbs.insert(std::make_pair(featIdx, v));
-}
-
-double SarsaEBLearner::get_sum_log_phi(vector<long long>& features,
-                                       long time_step,
-                                       bool isFirst) {
-  double sum_log_phi = 0;
-
-  // Iterating over the features to calculate the joint
-  // TODO: Don't store the last p(a/phi_i),
-  //       calculate it as 1 - \sum_{j=1}^{numActions-1} p(a_j/phi_i)
-  for (long long featIdx : features) {
-    if (featureProbs.find(featIdx) == featureProbs.end()) {
-      add_new_feature_to_map(featIdx, time_step);
-    }
-
-    // p(phi_i=1)
-    sum_log_phi += log(featureProbs[featIdx][0]);
-
-    if (isFirst) {
-      // Increment n_{phi} as the feature is active.
-      featureProbs[featIdx][NUM_PHI_OFFSET] += 1;
-    }
-
-    // Set the feature as seen.
-    featureProbs[featIdx][1] = 1;
-  }
-
-  // p(phi_i=0)
-  for (auto it = featureProbs.begin(); it != featureProbs.end(); ++it) {
-    if (it->second[1] == 0) {
-      sum_log_phi += log(1 - it->second[0]);
-    } else {
-      // Reset the seen features to unseen as its update has already been
-      // done.
-      it->second[1] = 0;
-    }
-  }
-
-  return sum_log_phi;
-}
-
-double SarsaEBLearner::get_sum_log_action_given_phi(
-    unordered_map<long long, vector<double>>& context_featureProbs,
-    vector<long long>& features,
-    int action,
-    long time_step) {
-  double sum_log_action_given_phi = 0;
-
-  // ASSUMPTION: New features has been added to featureProbs in function
-  //  get_sum_log_phi
-
-  for (long long featIdx : features) {
-    // p(a=cur_act/phi_i=1)
-    sum_log_action_given_phi +=
-        log(context_featureProbs[featIdx][action + ACTION_OFFSET]);
-    // Set the feature as seen.
-    context_featureProbs[featIdx][1] = 1;
-  }
-  double tmp;
-  // p(a=cur_act/phi_i=0) =
-  //        (p(a=cur_act) - p(a=cur_act/phi_i=1)*p(phi_i=1))/(1-phi_i=1)
-  for (auto it = context_featureProbs.begin(); it != context_featureProbs.end();
-       ++it) {
-    // Update the probabilities for the inactive features.
-    if (it->second[1] == 0) {
-      // TODO: fix underfow issue, and address nan! Still might happen.
-      tmp = log(actionMarginals[action] -
-                (it->second[0] * it->second[action + ACTION_OFFSET])) -
-            log(1 - it->second[0]);
-      if (tmp != tmp) {
-        // printf("(1.2) Crazy difference: %.10f\n",
-        //        actionMarginals[action] -
-        //            (it->second[0] * it->second[action + ACTION_OFFSET]));
-        // printf("(1.3) log(1-p(phi=1)): %f\n", log(1 - it->second[0]));
-        // printf("(1.4) p(a)[%d]: %f\n", action, actionMarginals[action]);
-        // printf("(1.5) p(a,phi=1)[%d]: %f\n", action,
-        //        (it->second[0] * it->second[action + ACTION_OFFSET]));
-        // printf("(1.6) p(phi=1)[%d]: %f\n", action, it->second[0]);
-        // printf("(1.7) p(a/phi=1)[%d]: %f\n", action,
-        //        it->second[action + ACTION_OFFSET]);
-        for (int i = 0; i < 5; i++) {
-          printf("#################MIN PROB HACK ACTIVATED#################\n");
-        }
-        printf("[BEFORE] p(phi): %.10f\n", it->second[0]);
-        it->second[0] = (actionMarginals[action] - MIN_PROB) /
-                        (it->second[action + ACTION_OFFSET]);
-        printf("[AFTER] p(phi): %.10f\n", it->second[0]);
-        for (int i = 0; i < 5; i++) {
-          printf("####################MIN PROB HACK END####################\n");
-        }
-        // printf("(1.8) p(phi=1)[%d]: %f\n", action,
-        //        it->second[action + ACTION_OFFSET]);
-        tmp = log(MIN_PROB) - log(1 - it->second[0]);
-        is_min_prob_activated = true;
-      }
-      sum_log_action_given_phi += tmp;
-
-    } else {
-      // Reset the seen features to unseen as its update has already been done.
-      it->second[1] = 0;
-    }
-  }
-
-  return sum_log_action_given_phi;
-}
-
-void SarsaEBLearner::exploration_bonus(
-    vector<long long>& features,
-    long time_step,
-    vector<double>& act_exp,
-    vector<unordered_map<long long, vector<double>>>& updated_structure) {
-  // Calculate p(phi)
-  double sum_log_rho_phi = get_sum_log_phi(features, time_step, true);
-
-  // Calculate for all action in Actions p(action/phi)
-  vector<double> log_joint_phi_action(numActions);
-  double tmp;
-  for (int action = 0; action < numActions; action++) {
-    tmp =
-        get_sum_log_action_given_phi(featureProbs, features, action, time_step);
-    log_joint_phi_action[action] = sum_log_rho_phi + tmp;
-  }
-
-  // Update the phi values with the currently seen features.
-  update_phi(features, time_step);
-
-  // Calculate p'(phi)
-  double sum_log_rho_phi_prime = get_sum_log_phi(features, time_step, false);
-
-  double pseudo_count = 0;
-  double log_joint_phi_action_prime = 0;
-  for (int action = 0; action < numActions; action++) {
-    // Copy original Map to tmp Map
-    updated_structure[action] = featureProbs;
-
-    // Update the action given phi values for the current action and features.
-    update_action_given_phi(updated_structure[action], features, action,
-                            time_step);
-
-    // Calculate p'(a,phi)
-    tmp = get_sum_log_action_given_phi(updated_structure[action], features,
-                                       action, time_step);
-    log_joint_phi_action_prime = sum_log_rho_phi_prime + tmp;
-
-    // calculate pseudo count as (1/(exp(p(phi' - p()))-1))
-    pseudo_count =
-        1.0 /
-        (exp(log_joint_phi_action_prime - log_joint_phi_action[action]) - 1);
-
-    // push the exploration bonus to the output vector.
-    // printf("log_joint_phi_action_prime: %f\n", log_joint_phi_action_prime);
-    // printf("log_joint_phi_action[%d]: %f\n", action,
-    //        log_joint_phi_action[action]);
-    printf("pseudo_count[%d]: %.20f\n", action, pseudo_count);
-    act_exp[action] = beta / sqrt(pseudo_count + 0.01);
-  }
-}
-
-double SarsaEBLearner::exploration_bonus(vector<long long>& features,
-                                         long time_step,
-                                         int action) {
-  // Calculate p(phi)
-  double sum_log_rho_phi = get_sum_log_phi(features, time_step, true);
-
-  // Calculate p(action/phi) for max action
-  double sum_log_action_given_phi =
-      get_sum_log_action_given_phi(featureProbs, features, action, time_step);
-  double log_joint_phi_action = sum_log_rho_phi + sum_log_action_given_phi;
-
-  // Update the phi values with the currently seen features.
-  update_phi(features, time_step);
-
-  // Calculate p'(phi)
-  double sum_log_rho_phi_prime = get_sum_log_phi(features, time_step, false);
-
-  // Update the action given phi values for the current action and features.
-  update_action_given_phi(featureProbs, features, action, time_step);
-
-  // Calculate p'(a,phi)
-  sum_log_action_given_phi =
-      get_sum_log_action_given_phi(featureProbs, features, action, time_step);
-  double log_joint_phi_action_prime =
-      sum_log_rho_phi_prime + sum_log_action_given_phi;
-
-  // calculate pseudo count as (1/(exp(p(phi' - p()))-1))
-  double pseudo_count =
-      1.0 / (exp(log_joint_phi_action_prime - log_joint_phi_action) - 1);
-
-  // push the exploration bonus to the output vector.
-  // printf("log_joint_phi_action_prime: %f\n", log_joint_phi_action_prime);
-  // printf("log_joint_phi_action[%d]: %f\n", action, log_joint_phi_action);
-  printf("pseudo_count[%d]: %.20f\n", action, pseudo_count);
-  return beta / sqrt(pseudo_count + kappa);
-}
-
-double SarsaEBLearner::get_joint_prob_phi_from_CT(vector<long long>& features,
-                                                  long time_step) {
+double SarsaEBLearner::ct_exploration_bonus(vector<long long>& features,
+                                            long time_step) {
   // For each features get logProb from context tree and take sum to get the
   // joint.
-
   double sum_log_phi = 0;
+  double sum_log_phi_prime = 0;
   for (long long featIdx : features) {
     if (feature_context_trees.find(featIdx) == feature_context_trees.end()) {
       initCTForFeature(featIdx);
-      feature_context_trees[feature].initFeatureData(numActions, time_step);
+      sum_log_phi += zeroCTPrototype->logProb(1);
+
+      double root_prob = zeroCTPrototype->getRootLogProbEstimated();
+      feature_context_trees[featIdx]->updateFirst(1, root_prob, time_step);
+    } else {
+      sum_log_phi += feature_context_trees[featIdx]->logProb(1);
+      feature_context_trees[featIdx]->update(1);
     }
 
     // p(phi_i=1)
-    sum_log_phi += feature_context_trees[featIdx].logProb(1);
     feature_context_trees[featIdx]->setFeatureChecked(true);
+    sum_log_phi_prime += feature_context_trees[featIdx]->logProb(1);
   }
+
+  // Update P(prototype = 0)
+  sum_log_phi += (total_feature_count - feature_context_trees.size()) *
+                 zeroCTPrototype->logProb(0);
+  zeroCTPrototype->update(0);
+  sum_log_phi_prime += (total_feature_count - feature_context_trees.size()) *
+                       zeroCTPrototype->logProb(0);
 
   // p(phi_i=0)
   for (auto it = feature_context_trees.begin();
        it != feature_context_trees.end(); ++it) {
-    if (!it->second.isFeatureChecked()) {
-      sum_log_phi += feature_context_trees[featIdx].logProb(0);
+    if (!it->second->isFeatureChecked()) {
+      sum_log_phi += it->second->logProb(0);
+      it->second->update(0);
+      sum_log_phi_prime += it->second->logProb(0);
     } else {
       // Reset the seen features to unseen as its update has already been
       // done.
-      feature_context_trees[featIdx]->setFeatureChecked(true);
+      it->second->setFeatureChecked(false);
     }
+    sum_log_phi += zeroCTPrototype->logProb(1);
   }
 
-  return sum_log_phi;
-}
-
-double SarsaEBLearner::get_sum_log_action_given_phi_from_CT(
-    vector<long long>& features,
-    int action,
-    long time_step) {
-  double sum_log_action_given_phi = 0;
-
-  // ASSUMPTION: New CT has been added to feature_context_trees in function
-  //  get_joint_prob_phi_from_CT
-
-  for (long long featIdx : features) {
-    // p(a=cur_act/phi_i=1)
-    sum_log_action_given_phi +=
-        log(feature_context_trees[featIdx]->getP_AGivenPhi_forAction(action));
-
-    // Set the feature as seen.
-    feature_context_trees[featIdx]->setFeatureChecked(true);
-  }
-  double tmp;
-  // p(a=cur_act/phi_i=0) =
-  //        (p(a=cur_act) - p(a=cur_act/phi_i=1)*p(phi_i=1))/(1-phi_i=1)
-  for (auto it = context_featureProbs.begin(); it != context_featureProbs.end();
-       ++it) {
-    // Update the probabilities for the inactive features.
-    if (!it->second.isFeatureChecked()) {
-      // TODO: fix underfow issue, and address nan! Still might happen.
-      tmp = log(actionMarginals[action] -
-                (feature_context_trees[featIdx].prob(1) *
-                 feature_context_trees[featIdx]->getP_AGivenPhi_forAction(
-                     action))) -
-            log(feature_context_trees[featIdx].logProb(0));
-      if (tmp != tmp) {
-        // printf("(1.2) Crazy difference: %.10f\n",
-        //        actionMarginals[action] -
-        //            (it->second[0] * it->second[action + ACTION_OFFSET]));
-        // printf("(1.3) log(1-p(phi=1)): %f\n", log(1 - it->second[0]));
-        // printf("(1.4) p(a)[%d]: %f\n", action, actionMarginals[action]);
-        // printf("(1.5) p(a,phi=1)[%d]: %f\n", action,
-        //        (it->second[0] * it->second[action + ACTION_OFFSET]));
-        // printf("(1.6) p(phi=1)[%d]: %f\n", action, it->second[0]);
-        // printf("(1.7) p(a/phi=1)[%d]: %f\n", action,
-        //        it->second[action + ACTION_OFFSET]);
-        for (int i = 0; i < 5; i++) {
-          printf("#################MIN PROB HACK ACTIVATED#################\n");
-        }
-        printf("[BEFORE] p(phi): %.10f\n", it->second[0]);
-        it->second[0] = (actionMarginals[action] - MIN_PROB) /
-                        (it->second[action + ACTION_OFFSET]);
-        printf("[AFTER] p(phi): %.10f\n", it->second[0]);
-        for (int i = 0; i < 5; i++) {
-          printf("####################MIN PROB HACK END####################\n");
-        }
-        // printf("(1.8) p(phi=1)[%d]: %f\n", action,
-        //        it->second[action + ACTION_OFFSET]);
-        tmp = log(MIN_PROB) - log(1 - it->second[0]);
-        is_min_prob_activated = true;
-      }
-      sum_log_action_given_phi += tmp;
-
-    } else {
-      // Reset the seen features to unseen as its update has already been done.
-      it->second[1] = 0;
-    }
+  double pseudo_count;
+  if ((sum_log_phi_prime - sum_log_phi) < 100) {
+    pseudo_count = log(1 - exp(sum_log_phi_prime)) -
+                   log(exp(sum_log_phi_prime - sum_log_phi) - 1);
+  } else {
+    pseudo_count =
+        log(1 - exp(sum_log_phi_prime)) - sum_log_phi_prime + sum_log_phi;
   }
 
-  return sum_log_action_given_phi;
-}
-
-double SarsaEBLearner::ct_exploration_bonus(vector<long long>& features,
-                                            long time_step,
-                                            int action) {
-  // Calculate p(phi) from context trees.
-  double sum_log_rho_phi = get_joint_prob_phi_from_CT(features, time_step);
-
-  // calculate p(a/phi) normally first then modify context trees.
-
-  // Update context tree.
-
-  // calculate p'(phi)
-  // For each features get logProb from updated context tree and take sum to get
-  // the joint.
-
-  // calculate p'(a/phi) normally first then modify context trees.
-
-  // Calculate pseudo count as (1/(exp(p(phi') - p(phi)))-1))
-
-  // return  beta / sqrt(pseudo_count + kappa);
+  return beta / sqrt(pseudo_count + kappa);
 }
 
 int SarsaEBLearner::epsilonQI(vector<float>& QValues,
@@ -543,6 +208,9 @@ int SarsaEBLearner::boltzmannQI(vector<float>& QIvalues,
 }
 
 void SarsaEBLearner::learnPolicy(ALEInterface& ale, Features* features) {
+  // initialize zeroCTPrototype Context Tree
+  zeroCTPrototype = new ContextTree(ct_depth);
+
   struct timeval tvBegin, tvEnd, tvDiff;
   vector<float> reward;
   double elapsedTime;
@@ -552,23 +220,15 @@ void SarsaEBLearner::learnPolicy(ALEInterface& ale, Features* features) {
   vector<float> episodeResults;
   vector<int> episodeFrames;
   vector<double> episodeFps;
-
   long time_step = 1;
-
   long long trueFeatureSize = 0;
   long long trueFnextSize = 0;
 
-  vector<long long> tmp_F;
+  // vector<long long> tmp_F;
   double curExpBonus = 0;
-
-  // Initialize action Marginals
-  for (int action = 0; action < numActions; action++) {
-    actionMarginals[action] = 1.0 / numActions;
-  }
-
   // Repeat (for each episode):
   // This is going to be interrupted by the ALE code since I set
-  // max_num_frames
+  // max_num_framesupdate
   // beforehand
   for (int episode = episodePassed + 1;
        totalNumberFrames < totalNumberOfFramesToLearn; episode++) {
@@ -592,7 +252,6 @@ void SarsaEBLearner::learnPolicy(ALEInterface& ale, Features* features) {
 
     F.clear();
     features->getActiveFeaturesIndices(ale.getScreen(), ale.getRAM(), F);
-    tmp_F = F;
     trueFeatureSize = F.size();
     groupFeatures(F);
     updateQValues(F, Q);
@@ -607,9 +266,6 @@ void SarsaEBLearner::learnPolicy(ALEInterface& ale, Features* features) {
     // Repeat(for each step of episode) until game is over:
     // This also stops when the maximum number of steps per episode is reached
     while (!ale.game_over()) {
-      // Update P_{KT}(t,0) probability
-      log_prob_kt_t_0 += log(time_step + 0.5) - log(time_step + 1);
-
       reward.clear();
       reward.push_back(0.0);
       reward.push_back(0.0);
@@ -620,7 +276,6 @@ void SarsaEBLearner::learnPolicy(ALEInterface& ale, Features* features) {
       sanityCheck();
       // Take action, observe reward and next state:
       act(ale, currentAction, reward);
-      curExpBonus = exploration_bonus(tmp_F, time_step, currentAction);
       for (int action = 0; action < numActions; action++) {
         printf("Q-value[%d]: %f\n", action, Q[action]);
         printf("QI-value[%d]: %f\n", action, QI[action]);
@@ -631,10 +286,7 @@ void SarsaEBLearner::learnPolicy(ALEInterface& ale, Features* features) {
         Fnext.clear();
         features->getActiveFeaturesIndices(ale.getScreen(), ale.getRAM(),
                                            Fnext);
-        // if (Fnext == tmp_F) {
-        //   // printf("Both sates are same\n");
-        // }
-        tmp_F = Fnext;
+        curExpBonus = ct_exploration_bonus(Fnext, time_step);
         trueFnextSize = Fnext.size();
         groupFeatures(Fnext);
 
@@ -646,7 +298,6 @@ void SarsaEBLearner::learnPolicy(ALEInterface& ale, Features* features) {
         // nextAction = epsilonQI(Qnext, QInext, episode);
         // nextAction = epsilonGreedy(Qnext, episode);
         // nextAction = Mathematics::argmax(Qnext, agentRand);
-        update_action_marginals(nextAction, time_step);
         printf("reward: %f\n", reward[0]);
         printf("exp_bonus: %.10f\n", curExpBonus);
         printf("action taken: %d\n", currentAction);
@@ -662,16 +313,9 @@ void SarsaEBLearner::learnPolicy(ALEInterface& ale, Features* features) {
       if (trueFeatureSize > maxFeatVectorNorm) {
         maxFeatVectorNorm = trueFeatureSize;
         learningRate = alpha / maxFeatVectorNorm;
-        // QI_learningRate = QI_alpha / maxFeatVectorNorm;
       }
-      if (!is_min_prob_activated) {
-        delta = reward[0] + gamma * Qnext[nextAction] - Q[currentAction];
-        QI_delta = curExpBonus + gamma * QInext[nextAction] - QI[currentAction];
-      } else {
-        delta = 0;
-        QI_delta = 0;
-        is_min_prob_activated = false;
-      }
+      delta = reward[0] + gamma * Qnext[nextAction] - Q[currentAction];
+      QI_delta = curExpBonus + gamma * QInext[nextAction] - QI[currentAction];
       // printf("delta: %f\n", delta);
       // printf("QI_delta: %f\n", QI_delta);
       // Update weights vector:
@@ -733,7 +377,7 @@ void SarsaEBLearner::groupFeatures(vector<long long>& activeFeatures) {
         for (unsigned int action = 0; action < w.size(); ++action) {
           w[action].push_back(0.0);
           e[action].push_back(0.0);
-          QI_w[action].push_back(init_w_value / activeFeatures.size());
+          QI_w[action].push_back(0.0);
         }
         ++numGroups;
         featureTranslate[featureIndex] = numGroups;

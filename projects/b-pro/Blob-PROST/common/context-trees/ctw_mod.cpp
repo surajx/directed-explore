@@ -140,12 +140,16 @@ void ContextTree::createNodesInCurrentContext(const context_t& context) {
 }
 
 /* create a context tree of specified maximum depth and size */
-ContextTree::ContextTree(history_t& history, size_t depth, int phase /*=-1*/)
+ContextTree::ContextTree(size_t depth, int phase /*=-1*/)
     : m_ctnode_pool(sizeof(CTNode)),
       m_root(new (m_ctnode_pool.malloc()) CTNode()),
       m_phase(phase),
-      m_depth(depth),
-      m_history(history) {}
+      m_depth(depth) {
+  // Initialize history
+  m_history.clear();
+  for (size_t i = 0; i < depth; ++i)
+    m_history.push_back(0);
+}
 
 /* delete the context tree */
 ContextTree::~ContextTree(void) {
@@ -205,8 +209,14 @@ void ContextTree::update(bit_t b) {
   m_history.push_back(b != 0);
 }
 
+double ContextTree::getRootLogProbEstimated() {
+  return m_root->logProbEstimated();
+}
+
 /* updates the context tree with a single bit */
-void ContextTree::updateFirst(bit_t b, double init_log_prob_kt) {
+void ContextTree::updateFirst(bit_t b,
+                              double init_log_prob_kt,
+                              long time_step) {
   // compute the current context
   context_t context;
   context.reserve(m_depth);
@@ -229,7 +239,7 @@ void ContextTree::updateFirst(bit_t b, double init_log_prob_kt) {
   for (; !path.empty(); path.pop()) {
     bool skip = UseWeightingOnlyAtByteBoundaries && m_phase > -1 &&
                 (index % 8) != m_phase && index != 0;
-    path.top()->updateFirst(b, skip, init_log_prob_kt);
+    path.top()->updateFirst(b, skip, init_log_prob_kt, time_step);
     index--;
   }
 
@@ -396,33 +406,10 @@ double ContextTree::logBlockProbability(void) const {
   return m_root->logProbWeighted();
 }
 
-void ContextTree::initFeatureData(int numActions, long time_step) {
-  featureData.is_checked = false;
-  for (int i = 0; i < numActions; i++) {
-    featureData.push_back(1.0 / numActions);
-  }
-}
-
 bool ContextTree::isFeatureChecked() {
-  return featureData.is_checked;
+  return is_checked;
 }
 
-void ContextTree::setFeatureChecked(bool is_checked) {
-  featureData.is_checked = is_checked;
-}
-
-void ContextTree::updateP_AGivenPhi(int numActions,
-                                    int action,
-                                    long time_step) {
-  for (int a = 0; a < numActions; a++) {
-    featureData.p_a_phi[a] *=
-        (featureData.num_active + 1.0) / (featureData.num_active + 2);
-    if (a == action) {
-      featureData.p_a_phi[a] += (1.0 / (featureData.num_active + 2));
-    }
-  }
-}
-
-double ContextTree::getP_AGivenPhi_forAction(int action) {
-  return featureData.p_a_phi[action];
+void ContextTree::setFeatureChecked(bool is_feature_checked) {
+  is_checked = is_feature_checked;
 }

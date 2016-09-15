@@ -70,6 +70,8 @@ class Compressor {
   // the probability of seeing a particular symbol next
   virtual double prob(bit_t b) = 0;
 
+  virtual double getRootLogProbEstimated() = 0;
+
   // the log probability of seeing a particular symbol next
   virtual double logProb(bit_t b) = 0;
 
@@ -78,6 +80,15 @@ class Compressor {
 
   // process a new piece of sensory experience
   virtual void update(bit_t b) = 0;
+
+  // process a new piece of sensory experience
+  virtual void updateFirst(bit_t b,
+                           double init_log_prob_kt,
+                           long time_step) = 0;
+
+  virtual void setFeatureChecked(bool is_checked) = 0;
+
+  virtual bool isFeatureChecked() = 0;
 
   // file extension
   virtual const char* fileExtension() const = 0;

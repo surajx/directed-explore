@@ -61,7 +61,7 @@ class CTNode {
 class ContextTree : public Compressor, boost::noncopyable {
  public:
   /// create a context tree of specified maximum depth and size
-  ContextTree(history_t& history, size_t depth, int phase = -1);
+  ContextTree(size_t depth, int phase = -1);
 
   /// delete the context tree
   ~ContextTree();
@@ -89,20 +89,11 @@ class ContextTree : public Compressor, boost::noncopyable {
   /// number of nodes in the context tree
   size_t size() const;
 
-  void initFeatureData(int numActions, long time_step);
-
-  double getP_AGivenPhi_forAction(int action);
-
-  void updateP_AGivenPhi(int numActions, int action, long time_step);
-
   void setFeatureChecked(bool is_checked);
 
   bool isFeatureChecked();
 
-  struct FeatureData {
-    bool is_checked;
-    vector<double> p_a_phi;
-  };
+  double getRootLogProbEstimated();
 
  private:
   // recover the memory used by a node
@@ -123,8 +114,8 @@ class ContextTree : public Compressor, boost::noncopyable {
   CTNode* m_root;
   int m_phase;
   size_t m_depth;
-  history_t& m_history;
-  FeatureData featureData;
+  bool is_checked;
+  history_t m_history;
 };
 
 #endif  // __CTW_MOD_HPP__

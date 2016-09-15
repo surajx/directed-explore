@@ -22,29 +22,20 @@ using namespace std;
 
 class SarsaEBLearner : public SarsaLearner {
  private:
-  double beta, sigma, kappa, init_w_value;
-  unordered_map<long long, vector<double>> featureProbs;
-  unordered_map<int, double> actionMarginals;
+  double beta, sigma, kappa;
 
   const double nu = 1;
   const double QI_alpha = 0.25;
   double QI_delta;
-  float QI_learningRate;
   vector<float> QI;            // Q(a) entries
   vector<float> QInext;        // Q(a) entries for next action
   vector<vector<float>> QI_w;  // Theta, weights vector
 
-  bool is_min_prob_activated;
-
-  const int ACTION_OFFSET = 2;
-  int NUM_PHI_OFFSET;
-
-  const double MIN_PROB = std::numeric_limits<double>::min();  // 1e-9;
+  const long total_feature_count = 114702400;
 
   // context trees
-  double log_prob_kt_t_0 = log(0.5);
-  const int ct_depth = 10;
-  unordered_map<long long, Compressor> feature_context_trees;
+  unsigned int ct_depth = 10;
+  unordered_map<long long, Compressor*> feature_context_trees;
 
   Compressor* zeroCTPrototype;
 
@@ -115,37 +106,12 @@ class SarsaEBLearner : public SarsaLearner {
   *              n_phi # No of time phi has been active
   *   }
   */
-  void add_new_feature_to_map(long long featIdx, int time_step);
 
-  void update_action_marginals(int cur_action, int time_step);
+  void initCTForFeature(long long feature);
 
-  void update_phi(vector<long long>& features, long time_step);
+  void zeroFill(history_t& h, size_t n);
 
-  void update_action_given_phi(
-      unordered_map<long long, vector<double>>& tmp_featureProbs,
-      vector<long long>& features,
-      int action,
-      long time_step);
-
-  double get_sum_log_phi(vector<long long>& features,
-                         long time_step,
-                         bool isFirst);
-
-  double get_sum_log_action_given_phi(
-      unordered_map<long long, vector<double>>& context_featureProbs,
-      vector<long long>& features,
-      int action,
-      long time_step);
-
-  void exploration_bonus(
-      vector<long long>& features,
-      long time_step,
-      vector<double>& act_exp,
-      vector<unordered_map<long long, vector<double>>>& updated_structure);
-
-  double exploration_bonus(vector<long long>& features,
-                           long time_step,
-                           int action);
+  double ct_exploration_bonus(vector<long long>& features, long time_step);
 
   void groupFeatures(vector<long long>& activeFeatures);
 

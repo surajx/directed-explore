@@ -11,7 +11,8 @@ USE_SDL := 1
 # -D__USE_SDL Ensures we can use SDL to see the game screen
 # -D_GNU_SOURCE=1 means the compiler will use the GNU standard of compilation, the superset of all other standards under GNU C libraries.
 # -D_REENTRANT causes the compiler to use thread safe (i.e. re-entrant) versions of several functions in the C library.
-FLAGS := -O3 -I$(ALE)/src -L$(ALE) -lale -lz
+FLAGS := -O3 -I$(ALE)/src -I/usr/include/boost -L/usr/lib/x86_64-linux-gnu -L$(ALE)
+BOOST :=  -lboost_filesystem -lboost_program_options -lboost_system -lale -lz
 CXX := g++ -std=c++11
 OUT_FILE := learner
 # Search for library 'ale' and library 'z' when linking.
@@ -24,12 +25,8 @@ endif
 
 all: learnerBlobTime
 
-cmp_link:
-	$(CXX) $(FLAGS) -c $(ARG1) -o bin/$(ARG2)
-	$(CXX) $(FLAGS) bin/mainBlobTime.o bin/Mathematics.o bin/Timer.o bin/Parameters.o bin/Features.o bin/Background.o bin/BlobTimeFeatures.o bin/RLLearner.o bin/SarsaLearner.o bin/SarsaEBLearner.o -o learnerBlobTime
-
-learnerBlobTime: bin/mainBlobTime.o bin/Mathematics.o bin/Parameters.o bin/Timer.o bin/Features.o bin/Background.o bin/BlobTimeFeatures.o bin/RLLearner.o bin/SarsaLearner.o bin/SarsaEBLearner.o
-	$(CXX) $(FLAGS) bin/mainBlobTime.o bin/Mathematics.o bin/Timer.o bin/Parameters.o bin/Features.o bin/Background.o bin/BlobTimeFeatures.o bin/RLLearner.o bin/SarsaLearner.o bin/SarsaEBLearner.o -o learnerBlobTime
+learnerBlobTime:  bin/mainBlobTime.o bin/Mathematics.o bin/Parameters.o bin/Timer.o bin/Features.o bin/Background.o bin/BlobTimeFeatures.o bin/RLLearner.o bin/SarsaLearner.o bin/ctw_mod.o bin/SarsaEBLearner.o
+	$(CXX) $(FLAGS) bin/mainBlobTime.o bin/Mathematics.o bin/Parameters.o bin/Timer.o bin/Features.o bin/Background.o bin/BlobTimeFeatures.o bin/RLLearner.o bin/SarsaLearner.o bin/ctw_mod.o bin/SarsaEBLearner.o $(BOOST) -o learnerBlobTime
 
 bin/mainBlobTime.o: mainBlobTime.cpp
 	$(CXX) $(FLAGS) -c mainBlobTime.cpp -o bin/mainBlobTime.o
@@ -58,8 +55,11 @@ bin/RLLearner.o: agents/rl/RLLearner.cpp
 bin/SarsaLearner.o: agents/rl/sarsa/SarsaLearner.cpp
 	$(CXX) $(FLAGS) -c agents/rl/sarsa/SarsaLearner.cpp -o bin/SarsaLearner.o
 
+bin/ctw_mod.o: common/context-trees/ctw_mod.cpp
+	$(CXX) $(FLAGS) -c common/context-trees/ctw_mod.cpp $(BOOST) -o bin/ctw_mod.o
+
 bin/SarsaEBLearner.o: agents/rl/sarsa/SarsaEBLearner.cpp
-	$(CXX) $(FLAGS) -c agents/rl/sarsa/SarsaEBLearner.cpp -o bin/SarsaEBLearner.o
+	$(CXX) $(FLAGS) -c agents/rl/sarsa/SarsaEBLearner.cpp $(BOOST) -o bin/SarsaEBLearner.o
 
 clean:
 	rm -rf ${OUT_FILE} bin/*.o
