@@ -120,10 +120,6 @@ double SarsaEBLearner::ct_exploration_bonus(vector<long long>& features,
   bool is_prob_overflow =
       (sum_log_phi_prime < -DBL_MAX) || (sum_log_phi < -DBL_MAX);
 
-  std::cout << "sum_log_phi: " << sum_log_phi << std::endl;
-  std::cout << "sum_log_phi_prime: " << sum_log_phi_prime << std::endl;
-  std::cout << "rho_equals_rho_prime: " << is_rho_equal_rho_prime << std::endl;
-
   if (is_rho_equal_rho_prime) {
     return 0;
   }
