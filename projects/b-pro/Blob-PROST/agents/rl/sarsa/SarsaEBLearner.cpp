@@ -24,6 +24,7 @@
 #include "SarsaEBLearner.hpp"
 #include <stdio.h>
 #include <math.h>
+#include <float.h>
 #include <set>
 #include <random>
 
@@ -115,19 +116,24 @@ double SarsaEBLearner::ct_exploration_bonus(vector<long long>& features,
   }
 
   double pseudo_count;
-  double tmp =
-      log(sum_log_phi_prime) + log(exp(sum_log_phi_prime - sum_log_phi));
-  if (tmp != tmp) {
+  bool is_rho_equal_rho_prime = ((sum_log_phi_prime - sum_log_phi) < DBL_MIN);
+  bool is_prob_overflow =
+      (sum_log_phi_prime < -DBL_MAX) || (sum_log_phi < -DBL_MAX);
+
+  std::cout << "sum_log_phi: " << sum_log_phi << std::endl;
+  std::cout << "sum_log_phi_prime: " << sum_log_phi_prime << std::endl;
+  std::cout << "rho_equals_rho_prime: " << is_rho_equal_rho_prime << std::endl;
+
+  if (is_rho_equal_rho_prime) {
     return 0;
-  } else if ((sum_log_phi_prime - sum_log_phi) < 100) {
-    pseudo_count = exp(log(1 - exp(sum_log_phi_prime)) -
-                       log(exp(sum_log_phi_prime - sum_log_phi) - 1));
-  } else if (sum_log_phi_prime > -100) {
-    pseudo_count =
-        exp(log(1 - exp(sum_log_phi_prime)) - sum_log_phi_prime + sum_log_phi);
-  } else {
-    pseudo_count = exp(sum_log_phi - sum_log_phi_prime);
   }
+  if (is_prob_overflow) {
+    return beta / sqrt(kappa);
+  }
+  // } else if ((sum_log_phi_prime - sum_log_phi) < 100) {
+  //   pseudo_count = exp(log(1 - exp(sum_log_phi_prime)) -
+  //                      log(exp(sum_log_phi_prime - sum_log_phi) - 1));
+  pseudo_count = 1 / (exp(sum_log_phi_prime - sum_log_phi) - 1);
 
   if (enable_logging) {
     printf("sum_log_phi: %f\n", sum_log_phi);

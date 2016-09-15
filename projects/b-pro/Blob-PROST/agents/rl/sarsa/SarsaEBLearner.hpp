@@ -30,7 +30,7 @@ class SarsaEBLearner : public SarsaLearner {
   vector<float> QI;            // Q(a) entries
   vector<float> QInext;        // Q(a) entries for next action
   vector<vector<float>> QI_w;  // Theta, weights vector
-
+  double MIN_LOG_PROB = 1e-30;
   const long total_feature_count = 114702400;
 
   // context trees
