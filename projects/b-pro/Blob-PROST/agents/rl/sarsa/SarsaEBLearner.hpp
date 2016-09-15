@@ -34,10 +34,12 @@ class SarsaEBLearner : public SarsaLearner {
   const long total_feature_count = 114702400;
 
   // context trees
-  unsigned int ct_depth = 10;
+  unsigned int ct_depth = 4;
   unordered_map<long long, Compressor*> feature_context_trees;
 
   Compressor* zeroCTPrototype;
+
+  bool enable_logging = false;
 
   /**
    * Constructor declared as private to force the user to instantiate
