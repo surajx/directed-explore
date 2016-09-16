@@ -331,7 +331,8 @@ void SarsaEBLearner::learnPolicy(ALEInterface& ale, Features* features) {
       } else {
         nextAction = 0;
         int missedSteps = episodeLength - ale.getEpisodeFrameNumber() + 1;
-        double penalty = pow(gamma, missedSteps) - 1;
+        double penalty =
+            (beta / sqrt(kappa)) * (1 - pow(gamma, missedSteps)) / (1 - gamma);
         curExpBonus -= penalty;
         for (unsigned int i = 0; i < Qnext.size(); i++) {
           Qnext[i] = 0;
@@ -346,7 +347,7 @@ void SarsaEBLearner::learnPolicy(ALEInterface& ale, Features* features) {
       }
 
       // optimistic scaling of exploration bonus
-      curExpBonus += gamma - 1.0;
+      curExpBonus -= beta / sqrt(kappa);
 
       delta = reward[0] + gamma * Qnext[nextAction] - Q[currentAction];
       QI_delta = curExpBonus + gamma * QInext[nextAction] - QI[currentAction];
