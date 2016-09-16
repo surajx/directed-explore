@@ -39,7 +39,7 @@ class SarsaEBLearner : public SarsaLearner {
 
   Compressor* zeroCTPrototype;
 
-  bool enable_logging = false;
+  bool is_logging_activated = false;
 
   /**
    * Constructor declared as private to force the user to instantiate

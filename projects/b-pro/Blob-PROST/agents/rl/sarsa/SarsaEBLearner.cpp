@@ -78,7 +78,7 @@ double SarsaEBLearner::ct_exploration_bonus(vector<long long>& features,
   // For each features get logProb from context tree and take sum to get the
   // joint.
   double sum_log_phi = 0;
-  double sum_log_phi_prime = 0;
+  // double sum_log_phi_prime = 0;
   for (long long featIdx : features) {
     if (feature_context_trees.find(featIdx) == feature_context_trees.end()) {
       initCTForFeature(featIdx);
@@ -93,13 +93,13 @@ double SarsaEBLearner::ct_exploration_bonus(vector<long long>& features,
 
     // p(phi_i=1)
     feature_context_trees[featIdx]->setFeatureChecked(true);
-    sum_log_phi_prime += feature_context_trees[featIdx]->logProb(1);
+    // sum_log_phi_prime += feature_context_trees[featIdx]->logProb(1);
   }
 
   // Add contribution of implicit P(prototype = 0) trees
   sum_log_phi += zeroCTPrototype->logProb(0);
   zeroCTPrototype->update(0);
-  sum_log_phi_prime += zeroCTPrototype->logProb(0);
+  // sum_log_phi_prime += zeroCTPrototype->logProb(0);
 
   // p(phi_i=0)
   for (auto it = feature_context_trees.begin();
@@ -107,7 +107,7 @@ double SarsaEBLearner::ct_exploration_bonus(vector<long long>& features,
     if (!it->second->isFeatureChecked()) {
       sum_log_phi += it->second->logProb(0);
       it->second->update(0);
-      sum_log_phi_prime += it->second->logProb(0);
+      // sum_log_phi_prime += it->second->logProb(0);
     } else {
       // Reset the seen features to unseen as its update has already been
       // done.
@@ -116,24 +116,23 @@ double SarsaEBLearner::ct_exploration_bonus(vector<long long>& features,
   }
 
   double pseudo_count;
-  bool is_rho_equal_rho_prime = ((sum_log_phi_prime - sum_log_phi) < DBL_MIN);
-  bool is_prob_overflow =
-      (sum_log_phi_prime < -DBL_MAX) || (sum_log_phi < -DBL_MAX);
+  // bool is_rho_equal_rho_prime = ((sum_log_phi_prime - sum_log_phi) <
+  // DBL_MIN);
+  bool is_prob_overflow = (sum_log_phi < -DBL_MAX);
 
-  if (is_rho_equal_rho_prime) {
-    return 0;
-  }
   if (is_prob_overflow) {
+    printf("is_prob_overflow: %d\n", is_prob_overflow);
     return beta / sqrt(kappa);
   }
   // } else if ((sum_log_phi_prime - sum_log_phi) < 100) {
   //   pseudo_count = exp(log(1 - exp(sum_log_phi_prime)) -
   //                      log(exp(sum_log_phi_prime - sum_log_phi) - 1));
-  pseudo_count = 1 / (exp(sum_log_phi_prime - sum_log_phi) - 1);
+  // pseudo_count = 1.0 / (exp(sum_log_phi_prime - sum_log_phi) - 1);
+  pseudo_count = exp(sum_log_phi) * time_step;
 
-  if (enable_logging) {
+  if (is_logging_activated) {
     printf("sum_log_phi: %f\n", sum_log_phi);
-    printf("sum_log_phi_prime: %f\n", sum_log_phi_prime);
+    // printf("sum_log_phi_prime: %f\n", sum_log_phi_prime);
     printf("pseudo count: %.15f\n", pseudo_count);
   }
 
@@ -213,7 +212,7 @@ int SarsaEBLearner::boltzmannQI(vector<float>& QIvalues,
   int action = boltDist(*agentRand);
   randomActionTaken = 1;
 
-  if (enable_logging) {
+  if (is_logging_activated) {
     printf("tau: %f\n", tau);
     printf("Random action: %d\n", action);
   }
@@ -258,14 +257,14 @@ void SarsaEBLearner::learnPolicy(ALEInterface& ale, Features* features) {
       }
     }
 
-    if (!enable_logging && totalNumberFrames >= 200000 * logging_count) {
-      enable_logging = true;
+    if (totalNumberFrames >= 200000 * logging_count) {
+      is_logging_activated = true;
       logging_count++;
       logging_ep_start = episode;
     }
 
-    if (episode >= logging_ep_start + 5) {
-      enable_logging = false;
+    if (episode >= logging_ep_start + 15) {
+      is_logging_activated = false;
     }
     // We have to clean the traces every episode:
     for (unsigned int a = 0; a < nonZeroElig.size(); a++) {
@@ -320,7 +319,7 @@ void SarsaEBLearner::learnPolicy(ALEInterface& ale, Features* features) {
         // nextAction = epsilonQI(Qnext, QInext, episode);
         // nextAction = epsilonGreedy(Qnext, episode);
         // nextAction = Mathematics::argmax(Qnext, agentRand);
-        if (enable_logging) {
+        if (is_logging_activated) {
           for (int action = 0; action < numActions; action++) {
             printf("Q-value[%d]: %f\n", action, Q[action]);
             printf("QI-value[%d]: %f\n", action, QI[action]);
@@ -351,7 +350,7 @@ void SarsaEBLearner::learnPolicy(ALEInterface& ale, Features* features) {
 
       delta = reward[0] + gamma * Qnext[nextAction] - Q[currentAction];
       QI_delta = curExpBonus + gamma * QInext[nextAction] - QI[currentAction];
-      if (enable_logging) {
+      if (is_logging_activated) {
         printf("delta: %f\n", delta);
         printf("QI_delta: %f\n", QI_delta);
       }
