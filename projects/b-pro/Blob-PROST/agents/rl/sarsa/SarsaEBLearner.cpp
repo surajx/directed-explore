@@ -33,7 +33,6 @@ SarsaEBLearner::SarsaEBLearner(ALEInterface& ale,
   beta = param->getBeta();
   sigma = param->getSigma();
   kappa = param->getKappa();
-  is_min_prob_activated = false;
 
   // init_w_value = beta / (sqrt(kappa) * (1 - gamma));
   // init_w_value = beta / sqrt(kappa);
@@ -46,7 +45,6 @@ SarsaEBLearner::SarsaEBLearner(ALEInterface& ale,
     QI_w.push_back(vector<float>());
   }
 
-  actionMarginals.clear();
   featureProbs.clear();
   featureProbs.reserve(60000);
 
@@ -65,15 +63,6 @@ void SarsaEBLearner::updateQIValues(vector<long long>& Features,
   }
 }
 
-void SarsaEBLearner::update_action_marginals(int cur_action, int time_step) {
-  for (int action = 0; action < numActions; action++) {
-    actionMarginals[action] *= (time_step + 1.0) / (time_step + 2);
-    if (action == cur_action) {
-      actionMarginals[action] += 1.0 / (time_step + 2);
-    }
-  }
-}
-
 void SarsaEBLearner::update_phi(vector<long long>& features, long time_step) {
   // Updating the p(phi) and p(a/phi)
   // p(phi)  : rho_{t+1} = ((rho_t * (t + 1)) + phi_{t + 1}) / (t + 2)
@@ -88,26 +77,6 @@ void SarsaEBLearner::update_phi(vector<long long>& features, long time_step) {
   // rho_{t + 1} = rho_{t + 1}^'  + (phi_{t + 1} / (t + 2))
   for (long long featIdx : features) {
     featureProbs[featIdx][0] += (1.0 / (time_step + 2));
-  }
-}
-
-void SarsaEBLearner::update_action_given_phi(
-    unordered_map<long long, vector<double>>& tmp_featureProbs,
-    vector<long long>& features,
-    int action,
-    long time_step) {
-  // p(a/phi): p_{t + 1}(a / phi) =
-  //    p_t * (n_{phi} + 1) / (n_{phi} + 2) + I[a = cur_act] / (n_{phi} + 2)
-  double n_phi = 0;
-  for (long long featIdx : features) {
-    n_phi = tmp_featureProbs[featIdx][NUM_PHI_OFFSET];
-    for (int a = 0; a < numActions; a++) {
-      tmp_featureProbs[featIdx][a + ACTION_OFFSET] *=
-          (n_phi + 1.0) / (n_phi + 2);
-      if (a == action) {
-        tmp_featureProbs[featIdx][a + ACTION_OFFSET] += (1.0 / (n_phi + 2));
-      }
-    }
   }
 }
 
@@ -165,68 +134,13 @@ double SarsaEBLearner::get_sum_log_phi(vector<long long>& features,
   return sum_log_phi;
 }
 
-double SarsaEBLearner::get_sum_log_action_given_phi(
-    unordered_map<long long, vector<double>>& context_featureProbs,
-    vector<long long>& features,
-    int action,
-    long time_step) {
-  double sum_log_action_given_phi = 0;
-
-  // ASSUMPTION: New features has been added to featureProbs in function
-  //  get_sum_log_phi
-
-  for (long long featIdx : features) {
-    // p(a=cur_act/phi_i=1)
-    sum_log_action_given_phi +=
-        log(context_featureProbs[featIdx][action + ACTION_OFFSET]);
-    // Set the feature as seen.
-    context_featureProbs[featIdx][1] = 1;
-  }
-  double tmp;
-  // p(a=cur_act/phi_i=0) =
-  //        (p(a=cur_act) - p(a=cur_act/phi_i=1)*p(phi_i=1))/(1-phi_i=1)
-  for (auto it = context_featureProbs.begin(); it != context_featureProbs.end();
-       ++it) {
-    // Update the probabilities for the inactive features.
-    if (it->second[1] == 0) {
-      // TODO: fix underfow issue, and address nan! Still might happen.
-      tmp = log(actionMarginals[action] -
-                (it->second[0] * it->second[action + ACTION_OFFSET])) -
-            log(1 - it->second[0]);
-      if (tmp != tmp) {
-        if (debug_mode) {
-          printf("[MIN_PROB_ACTIVATED::BEFORE:] p(phi): %.10f\n",
-                 it->second[0]);
-        }
-        it->second[0] = (actionMarginals[action] - MIN_PROB) /
-                        (it->second[action + ACTION_OFFSET]);
-        if (debug_mode) {
-          printf("[MIN_PROB_ACTIVATED::AFTER:] p(phi): %.10f\n", it->second[0]);
-        }
-        tmp = log(MIN_PROB) - log(1 - it->second[0]);
-        is_min_prob_activated = true;
-      }
-      sum_log_action_given_phi += tmp;
-
-    } else {
-      // Reset the seen features to unseen as its update has already been done.
-      it->second[1] = 0;
-    }
-  }
-
-  return sum_log_action_given_phi;
-}
-
 double SarsaEBLearner::exploration_bonus(vector<long long>& features,
                                          long time_step,
                                          int action) {
   // Calculate p(phi)
   double sum_log_rho_phi = get_sum_log_phi(features, time_step, true);
 
-  // Calculate p(action/phi) for max action
-  double sum_log_action_given_phi =
-      get_sum_log_action_given_phi(featureProbs, features, action, time_step);
-  double log_joint_phi_action = sum_log_rho_phi + sum_log_action_given_phi;
+  double log_joint_phi_action = sum_log_rho_phi;
 
   // Update the phi values with the currently seen features.
   update_phi(features, time_step);
@@ -234,22 +148,13 @@ double SarsaEBLearner::exploration_bonus(vector<long long>& features,
   // Calculate p'(phi)
   double sum_log_rho_phi_prime = get_sum_log_phi(features, time_step, false);
 
-  // Update the action given phi values for the current action and features.
-  update_action_given_phi(featureProbs, features, action, time_step);
-
-  // Calculate p'(a,phi)
-  sum_log_action_given_phi =
-      get_sum_log_action_given_phi(featureProbs, features, action, time_step);
-  double log_joint_phi_action_prime =
-      sum_log_rho_phi_prime + sum_log_action_given_phi;
-
-  // calculate pseudo count as (1/(exp(p(phi' - p()))-1))
+  // calculate pseudo count as (1/(exp(p(phi') - p(phi))-1))
   double pseudo_count =
-      1.0 / (exp(log_joint_phi_action_prime - log_joint_phi_action) - 1);
+      1.0 / (exp(sum_log_rho_phi_prime - sum_log_rho_phi) - 1);
 
   if (debug_mode || is_logging_activated) {
-    printf("log_joint_phi_action_prime: %f\n", log_joint_phi_action_prime);
-    printf("log_joint_phi_action[%d]: %f\n", action, log_joint_phi_action);
+    printf("sum_log_rho_phi_prime: %f\n", sum_log_rho_phi_prime);
+    printf("sum_log_rho_phi[%d]: %f\n", action, sum_log_rho_phi);
     printf("pseudo_count[%d]: %.20f\n", action, pseudo_count);
   }
 
@@ -356,11 +261,6 @@ void SarsaEBLearner::learnPolicy(ALEInterface& ale, Features* features) {
   int logging_count = 1;
   int logging_ep_start = 1;
 
-  // Initialize action Marginals
-  for (int action = 0; action < numActions; action++) {
-    actionMarginals[action] = 1.0 / numActions;
-  }
-
   // Repeat (for each episode):
   // This is going to be interrupted by the ALE code since I set
   // max_num_frames
@@ -446,7 +346,6 @@ void SarsaEBLearner::learnPolicy(ALEInterface& ale, Features* features) {
         // nextAction = epsilonQI(Qnext, QInext, episode);
         // nextAction = epsilonGreedy(Qnext, episode);
         // nextAction = Mathematics::argmax(Qnext, agentRand);
-        update_action_marginals(nextAction, time_step);
         if (debug_mode || is_logging_activated) {
           printf("reward: %f\n", reward[0]);
           printf("exp_bonus: %.10f\n", curExpBonus);
@@ -473,14 +372,8 @@ void SarsaEBLearner::learnPolicy(ALEInterface& ale, Features* features) {
       // optimistic scaling of exploration bonus
       curExpBonus += gamma - 1.0;
 
-      if (!is_min_prob_activated) {
-        delta = reward[0] + gamma * Qnext[nextAction] - Q[currentAction];
-        QI_delta = curExpBonus + gamma * QInext[nextAction] - QI[currentAction];
-      } else {
-        delta = 0;
-        QI_delta = 0;
-        is_min_prob_activated = false;
-      }
+      delta = reward[0] + gamma * Qnext[nextAction] - Q[currentAction];
+      QI_delta = curExpBonus + gamma * QInext[nextAction] - QI[currentAction];
 
       if (debug_mode || is_logging_activated) {
         printf("delta: %f\n", delta);

@@ -22,7 +22,6 @@ class SarsaEBLearner : public SarsaLearner {
  private:
   double beta, sigma, kappa, init_w_value;
   unordered_map<long long, vector<double>> featureProbs;
-  unordered_map<int, double> actionMarginals;
 
   const double nu = 1;
   const double QI_alpha = 0.25;
@@ -32,12 +31,8 @@ class SarsaEBLearner : public SarsaLearner {
   vector<float> QInext;        // Q(a) entries for next action
   vector<vector<float>> QI_w;  // Theta, weights vector
 
-  bool is_min_prob_activated;
-
   const int ACTION_OFFSET = 2;
   int NUM_PHI_OFFSET;
-
-  const double MIN_PROB = std::numeric_limits<double>::min();  // 1e-9;
 
   bool is_logging_activated = false;
   bool debug_mode = false;
@@ -111,25 +106,11 @@ class SarsaEBLearner : public SarsaLearner {
   */
   void add_new_feature_to_map(long long featIdx, int time_step);
 
-  void update_action_marginals(int cur_action, int time_step);
-
   void update_phi(vector<long long>& features, long time_step);
-
-  void update_action_given_phi(
-      unordered_map<long long, vector<double>>& tmp_featureProbs,
-      vector<long long>& features,
-      int action,
-      long time_step);
 
   double get_sum_log_phi(vector<long long>& features,
                          long time_step,
                          bool isFirst);
-
-  double get_sum_log_action_given_phi(
-      unordered_map<long long, vector<double>>& context_featureProbs,
-      vector<long long>& features,
-      int action,
-      long time_step);
 
   double exploration_bonus(vector<long long>& features,
                            long time_step,
