@@ -314,7 +314,7 @@ int SarsaEBLearner::boltzmannQI(vector<float>& QIvalues,
     if (min > q)
       min = q;
   }
-  double tau = fabs(max - min);
+  double tau = pow(fabs(max - min) + 1, 2);
 
   for (int idx = 0; idx < QIvalues.size(); idx++) {
     weights[idx] = exp(QIvalues[idx] / tau);
