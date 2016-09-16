@@ -35,7 +35,7 @@ SarsaEBLearner::SarsaEBLearner(ALEInterface& ale,
   kappa = param->getKappa();
 
   // init_w_value = beta / (sqrt(kappa) * (1 - gamma));
-  // init_w_value = beta / sqrt(kappa);
+  init_w_value = beta / sqrt(kappa);
 
   for (int i = 0; i < numActions; i++) {
     // Initialize Q;
@@ -352,9 +352,6 @@ void SarsaEBLearner::learnPolicy(ALEInterface& ale, Features* features) {
           printf("action taken: %d\n", currentAction);
         }
       } else {
-        int missedSteps = episodeLength - ale.getEpisodeFrameNumber() + 1;
-        double penalty = pow(gamma, missedSteps) - 1;
-        curExpBonus -= penalty;
         nextAction = 0;
         for (unsigned int i = 0; i < Qnext.size(); i++) {
           Qnext[i] = 0;
@@ -368,9 +365,6 @@ void SarsaEBLearner::learnPolicy(ALEInterface& ale, Features* features) {
         learningRate = alpha / maxFeatVectorNorm;
         // QI_learningRate = QI_alpha / maxFeatVectorNorm;
       }
-
-      // optimistic scaling of exploration bonus
-      curExpBonus += gamma - 1.0;
 
       delta = reward[0] + gamma * Qnext[nextAction] - Q[currentAction];
       QI_delta = curExpBonus + gamma * QInext[nextAction] - QI[currentAction];
@@ -438,8 +432,7 @@ void SarsaEBLearner::groupFeatures(vector<long long>& activeFeatures) {
         for (unsigned int action = 0; action < w.size(); ++action) {
           w[action].push_back(0.0);
           e[action].push_back(0.0);
-          QI_w[action].push_back(0.0);
-          // QI_w[action].push_back(init_w_value / activeFeatures.size());
+          QI_w[action].push_back(init_w_value / activeFeatures.size());
         }
         ++numGroups;
         featureTranslate[featureIndex] = numGroups;
