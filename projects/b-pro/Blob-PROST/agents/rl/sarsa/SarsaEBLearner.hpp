@@ -39,6 +39,9 @@ class SarsaEBLearner : public SarsaLearner {
 
   const double MIN_PROB = std::numeric_limits<double>::min();  // 1e-9;
 
+  bool is_logging_activated = false;
+  bool debug_mode = false;
+
   /**
    * Constructor declared as private to force the user to instantiate
    * SarsaEBLearner informing the parameters to learning/execution.
@@ -127,12 +130,6 @@ class SarsaEBLearner : public SarsaLearner {
       vector<long long>& features,
       int action,
       long time_step);
-
-  void exploration_bonus(
-      vector<long long>& features,
-      long time_step,
-      vector<double>& act_exp,
-      vector<unordered_map<long long, vector<double>>>& updated_structure);
 
   double exploration_bonus(vector<long long>& features,
                            long time_step,
