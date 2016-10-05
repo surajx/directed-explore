@@ -35,5 +35,6 @@ env/
 # Editors
 # VS Code
 .vscode/
+.deps
 
 *Frames*.txt

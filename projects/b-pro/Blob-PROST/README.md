@@ -7,6 +7,7 @@
 
 * makefile.unix
     * SET: USE_SDL=1
+    * (if reqd) sudo apt-get install libsdl1.2-dev
     * CMD: make all -f makefile.unix -j8
 
 #### Configuring B-PRO
