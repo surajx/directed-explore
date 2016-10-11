@@ -37,4 +37,7 @@ env/
 .vscode/
 .deps
 
+# Logs
 *Frames*.txt
+*.xz
+*.gzip
