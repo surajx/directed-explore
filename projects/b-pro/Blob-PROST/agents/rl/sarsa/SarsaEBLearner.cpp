@@ -181,6 +181,17 @@ int SarsaEBLearner::epsilonQI(vector<float>& QValues,
   return action;
 }
 
+int SarsaEBLearner::epsilonQIQ(vector<float>& QValues,
+                              vector<float>& QIValues,
+                              int episode) {
+  vector<float> mixedQIQValues(QValues.size());
+
+  std::transform(QValues.begin(), QValues.end(), QIValues.begin(),
+                 mixedQIQValues.begin(),
+                 [&](double q, double qi) { return q + nu * qi; });
+  return epsilonGreedy(mixedQIQValues,episode);
+}
+
 int SarsaEBLearner::optimisticEpsilonQI(vector<float>& QValues,
                                         vector<float>& QIValues,
                                         int episode) {
@@ -302,7 +313,7 @@ void SarsaEBLearner::learnPolicy(ALEInterface& ale, Features* features) {
     updateQValues(F, Q);
     updateQIValues(F, QI);
 
-    currentAction = optimisticEpsilonQI(Q, QI, episode);
+    currentAction = epsilonQIQ(Q, QI, episode);
     // currentAction = epsilonQI(Q, QI, episode);
     // currentAction = epsilonGreedy(Q, episode);
     // currentAction = Mathematics::argmax(Q, agentRand);
@@ -342,7 +353,7 @@ void SarsaEBLearner::learnPolicy(ALEInterface& ale, Features* features) {
         updateQValues(Fnext, Qnext);
         updateQIValues(Fnext, QInext);
 
-        nextAction = optimisticEpsilonQI(Qnext, QInext, episode);
+        nextAction = epsilonQIQ(Qnext, QInext, episode);
         // nextAction = epsilonQI(Qnext, QInext, episode);
         // nextAction = epsilonGreedy(Qnext, episode);
         // nextAction = Mathematics::argmax(Qnext, agentRand);

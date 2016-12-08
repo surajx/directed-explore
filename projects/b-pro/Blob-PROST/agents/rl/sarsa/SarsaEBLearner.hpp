@@ -116,9 +116,11 @@ class SarsaEBLearner : public SarsaLearner {
                            long time_step,
                            int action);
 
-  void groupFeatures(vector<long long>& activeFeatures);
+  void groupFeatures(vector<long long>& activeFeatures);  
 
   int epsilonQI(vector<float>& QValues, vector<float>& QIValues, int episode);
+
+  int epsilonQIQ(vector<float>& QValues, vector<float>& QIValues, int episode);
 
   void updateQIValues(vector<long long>& Features, vector<float>& QValues);
 
