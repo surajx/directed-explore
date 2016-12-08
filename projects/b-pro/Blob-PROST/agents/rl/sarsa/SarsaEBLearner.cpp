@@ -529,18 +529,27 @@ void SarsaEBLearner::saveCheckPoint(int episode, int totalNumberFrames, vector<f
     checkPointFile << numGroups<<endl;
     checkPointFile << featureTranslate.size()<<endl;
     vector<int> nonZeroWeights;
+    vector<int> nonZeroQIWeights;
     for (unsigned long long groupIndex=0; groupIndex<numGroups;++groupIndex){
         nonZeroWeights.clear();
+        nonZeroQIWeights.clear();
         for (unsigned long long a=0; a<w.size();a++){
             if (w[a][groupIndex]!=0){
                 nonZeroWeights.push_back(a);
             }
+            if (QI_w[a][groupIndex]!=0){
+                nonZeroQIWeights.push_back(a);
+            }            
         }
-        checkPointFile<<nonZeroWeights.size();
+        checkPointFile<<nonZeroWeights.size()<<" "<<nonZeroQIWeights.size();
         for (int i=0;i<nonZeroWeights.size();++i){
             int action = nonZeroWeights[i];
             checkPointFile<<" "<<action<<" "<<w[action][groupIndex];
         }
+        for (int i=0;i<nonZeroQIWeights.size();++i){
+            int action = nonZeroQIWeights[i];
+            checkPointFile<<" "<<action<<" "<<QI_w[action][groupIndex];
+        }        
         checkPointFile<<"\t";
     }
     checkPointFile << endl;
@@ -582,16 +591,22 @@ void SarsaEBLearner::loadCheckPoint(ifstream& checkPointToLoad){
     }
     for (unsigned a =0;a<w.size();a++){
         w[a].resize(numGroups,0.00);
+        QI_w[a].resize(numGroups,0.00);
         e[a].resize(numGroups,0.00);
     }
     int action;
     float weight;
     int numNonZeroWeights;
+    int numNonZeroQIWeights;
     for (unsigned long long groupIndex=0; groupIndex<numGroups;++groupIndex){
-        checkPointToLoad >> numNonZeroWeights;
+        checkPointToLoad >> numNonZeroWeights; checkPointToLoad >> numNonZeroQIWeights;
         for (unsigned int i=0; i<numNonZeroWeights;++i){
             checkPointToLoad >> action; checkPointToLoad >> weight;
             w[action][groupIndex] = weight;
+        }
+        for (unsigned int i=0; i<numNonZeroQIWeights;++i){
+            checkPointToLoad >> action; checkPointToLoad >> weight;
+            QI_w[action][groupIndex] = weight;
         }
     }
     
