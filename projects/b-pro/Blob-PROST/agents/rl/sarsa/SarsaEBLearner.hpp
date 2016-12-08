@@ -122,6 +122,10 @@ class SarsaEBLearner : public SarsaLearner {
 
   int epsilonQIQ(vector<float>& QValues, vector<float>& QIValues, int episode);
 
+  void saveCheckPoint(int episode, int totalNumberFrames, vector<float>& episodeResults,int& frequency,vector<int>& episodeFrames, vector<double>& episodeFps);
+  
+  void loadCheckPoint(ifstream& checkPointToLoad);
+
   void updateQIValues(vector<long long>& Features, vector<float>& QValues);
 
   int optimisticEpsilonQI(vector<float>& QValues,

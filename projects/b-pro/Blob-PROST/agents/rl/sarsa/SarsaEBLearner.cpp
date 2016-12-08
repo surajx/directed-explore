@@ -497,4 +497,111 @@ void SarsaEBLearner::groupFeatures(vector<long long>& activeFeatures) {
   }
 }
 
+void SarsaEBLearner::saveCheckPoint(int episode, int totalNumberFrames, vector<float>& episodeResults,int& frequency,vector<int>& episodeFrames, vector<double>& episodeFps){
+    ofstream learningConditionFile;
+    string newNameForLearningCondition = checkPointName+"-learningCondition-Frames"+to_string(saveThreshold)+"-writing.txt";
+    int renameReturnCode = rename(nameForLearningCondition.c_str(),newNameForLearningCondition.c_str());
+    if (renameReturnCode == 0){
+        nameForLearningCondition = newNameForLearningCondition;
+        learningConditionFile.open(nameForLearningCondition.c_str(), ios_base::app);
+        int numEpisode = episodeResults.size();
+        for (int index = 0;index<numEpisode;index++){
+            learningConditionFile <<"Episode "<<episode-numEpisode+1+index<<": "<<episodeResults[index]<<" points,  "<<episodeFrames[index]<<" frames,  "<<episodeFps[index]<<" fps."<<endl;
+        }
+        episodeResults.clear();
+        episodeFrames.clear();
+        episodeFps.clear();
+        learningConditionFile.close();
+        newNameForLearningCondition.replace(newNameForLearningCondition.end()-11,newNameForLearningCondition.end()-4,"finished");
+        rename(nameForLearningCondition.c_str(),newNameForLearningCondition.c_str());
+        nameForLearningCondition = newNameForLearningCondition;
+    }
+    
+    //write parameters checkPoint
+    string currentCheckPointName = checkPointName+"-checkPoint-Frames"+to_string(saveThreshold)+"-writing.txt";
+    ofstream checkPointFile;
+    checkPointFile.open(currentCheckPointName.c_str());
+    checkPointFile<<(*agentRand)<<endl;
+    checkPointFile<<totalNumberFrames<<endl;
+    checkPointFile << episode<<endl;
+    checkPointFile << firstReward<<endl;
+    checkPointFile << maxFeatVectorNorm<<endl;
+    checkPointFile << numGroups<<endl;
+    checkPointFile << featureTranslate.size()<<endl;
+    vector<int> nonZeroWeights;
+    for (unsigned long long groupIndex=0; groupIndex<numGroups;++groupIndex){
+        nonZeroWeights.clear();
+        for (unsigned long long a=0; a<w.size();a++){
+            if (w[a][groupIndex]!=0){
+                nonZeroWeights.push_back(a);
+            }
+        }
+        checkPointFile<<nonZeroWeights.size();
+        for (int i=0;i<nonZeroWeights.size();++i){
+            int action = nonZeroWeights[i];
+            checkPointFile<<" "<<action<<" "<<w[action][groupIndex];
+        }
+        checkPointFile<<"\t";
+    }
+    checkPointFile << endl;
+    
+    for (auto it=featureTranslate.begin(); it!=featureTranslate.end();++it){
+        checkPointFile<<it->first<<" "<<it->second<<"\t";
+    }
+    checkPointFile<<endl;
+    checkPointFile.close();
+    
+    string previousVersionCheckPoint = checkPointName+"-checkPoint-Frames"+to_string(saveThreshold-saveWeightsEveryXFrames)+"-finished.txt";
+    if((saveThreshold-saveWeightsEveryXFrames)%50000000 != 0){
+        remove(previousVersionCheckPoint.c_str());
+    }   
+    string oldCheckPointName = currentCheckPointName;
+    currentCheckPointName.replace(currentCheckPointName.end()-11,currentCheckPointName.end()-4,"finished");
+    rename(oldCheckPointName.c_str(),currentCheckPointName.c_str());
+    
+}
+
+void SarsaEBLearner::loadCheckPoint(ifstream& checkPointToLoad){
+    checkPointToLoad >> (*agentRand);
+    checkPointToLoad >> totalNumberFrames;
+    while (totalNumberFrames<1000){
+        checkPointToLoad >> totalNumberFrames;
+    }
+    checkPointToLoad >> episodePassed;
+    checkPointToLoad >> firstReward;
+    checkPointToLoad >> maxFeatVectorNorm;
+    learningRate = alpha / float(maxFeatVectorNorm);
+    checkPointToLoad >> numGroups;
+    long long numberOfFeaturesSeen;
+    checkPointToLoad >> numberOfFeaturesSeen;
+    for (unsigned long long index=0;index<numGroups;++index){
+        Group agroup;
+        agroup.numFeatures = 0;
+        agroup.features.clear();
+        groups.push_back(agroup);
+    }
+    for (unsigned a =0;a<w.size();a++){
+        w[a].resize(numGroups,0.00);
+        e[a].resize(numGroups,0.00);
+    }
+    int action;
+    float weight;
+    int numNonZeroWeights;
+    for (unsigned long long groupIndex=0; groupIndex<numGroups;++groupIndex){
+        checkPointToLoad >> numNonZeroWeights;
+        for (unsigned int i=0; i<numNonZeroWeights;++i){
+            checkPointToLoad >> action; checkPointToLoad >> weight;
+            w[action][groupIndex] = weight;
+        }
+    }
+    
+    long long featureIndex;
+    long long featureToGroup;
+    while (checkPointToLoad >> featureIndex && checkPointToLoad >> featureToGroup){
+        featureTranslate[featureIndex] = featureToGroup;
+        groups[featureToGroup-1].numFeatures+=1;
+    }
+    checkPointToLoad.close();
+}
+
 SarsaEBLearner::~SarsaEBLearner() {}
