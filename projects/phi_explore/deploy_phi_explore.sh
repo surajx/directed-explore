@@ -18,8 +18,9 @@ sysname=$1
 num_cores=`lscpu | grep -i Core | grep -i "per socket" | awk '{ print $4}'`
 romLoc="./ALE/ROMS"
 
-end=$(($2 * $num_cores))
-start=$(($end - $num_cores))
+eff_coref=$(($num_cores / ${#game_array[@]}))
+end=$(($2 * $eff_coref))
+start=$(($end - $eff_coref))
 beta_block=("${beta_array[@]:$start:$end}")
 
 repeat_game=$3
