@@ -3,7 +3,7 @@
 # Configure beta values, and games to be run here
 #################################################
 game_array=( montezuma_revenge freeway ) #venture frostbite qbert gravitar bank_heist alien )
-beta_array=( 0.005 0.01 0.015 0.02 0.025 0.03 0.035 0.04 0.045 0.05 0.06 0.07 )
+beta_array=( 0.001 0.0015 0.002 0.0025 0.003 0.0035 0.004 0.0045 0.005 0.01 0.015 0.02 0.025 0.03 0.035 0.04 0.045 0.05 0.06 0.07 )
 #################################################
 
 # Help
@@ -83,9 +83,11 @@ then
         do
             for trial in `seq 1 $repeat_game`;
             do
-                seed=$(( ( RANDOM % 10000 )  + 1486 ))                
+                seed=$(( ( RANDOM % 10000 )  + 1486 ))
+                cat $agent_conf | grep "BETA"
                 echo "[DEPLOY::$beta] ./agent/Blob-PROST/learnerBlobTime -s $seed -c $agent_conf -r $romLoc/$game.bin -w "$game"__"$sysname"_beta_"$beta"_trail_"$trial" -n "$game"__"$sysname"_beta_"$beta"_trial_"$trial"_chkpt > /dev/null &"
                 ./agent/Blob-PROST/learnerBlobTime -s $seed -c $agent_conf -r $romLoc/$game.bin -w "$game"__"$sysname"_beta_"$beta"_trail_"$trial" -n "$game"__"$sysname"_beta_"$beta"_trial_"$trial"_chkpt > /dev/null &
+                sleep 5
             done
         done
     done
