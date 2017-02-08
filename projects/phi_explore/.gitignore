@@ -4,3 +4,4 @@ agent/Blob-PROST/learnerBlobTime
 ale.cfg
 *learningCondition*.txt
 *checkPoint*.txt
+data/
