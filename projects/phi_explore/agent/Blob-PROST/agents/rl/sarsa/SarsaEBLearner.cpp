@@ -6,7 +6,7 @@
  **
  ** TODO: Make it as efficient as possible.
  **
- ** Author: Marlos C. Machado
+ ** Author: Suraj Narayanan Sasikumar, Marlos C. Machado
  ******************************************************************************/
 
 #ifndef TIMER_H
