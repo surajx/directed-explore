@@ -35,4 +35,9 @@ env/
 # Editors
 # VS Code
 .vscode/
+.deps
 
+# Logs
+*Frames*.txt
+*.xz
+*.gzip
