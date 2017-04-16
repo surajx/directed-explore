@@ -85,8 +85,8 @@ then
             do
                 seed=$(( ( RANDOM % 10000 )  + 1486 ))
                 cat $agent_conf | grep "BETA"
-                echo "[DEPLOY::$beta] ./agent/Blob-PROST/learnerBlobTime -s $seed -c $agent_conf -r $romLoc/$game.bin -w "$game"__"$sysname"_beta_"$beta"_trail_"$trial" -n "$game"__"$sysname"_beta_"$beta"_trial_"$trial"_chkpt > /dev/null &"
-                ./agent/Blob-PROST/learnerBlobTime -s $seed -c $agent_conf -r $romLoc/$game.bin -w "$game"__"$sysname"_beta_"$beta"_trail_"$trial" -n "$game"__"$sysname"_beta_"$beta"_trial_"$trial"_chkpt > /dev/null &
+                echo "[DEPLOY::$beta] nohup ./agent/Blob-PROST/learnerBlobTime -s $seed -c $agent_conf -r $romLoc/$game.bin -w "$game"__"$sysname"_beta_"$beta"_trail_"$trial" -n "$game"__"$sysname"_beta_"$beta"_trial_"$trial"_chkpt 1>/dev/null 2>/dev/null &"
+                nohup ./agent/Blob-PROST/learnerBlobTime -s $seed -c $agent_conf -r $romLoc/$game.bin -w "$game"__"$sysname"_beta_"$beta"_trail_"$trial" -n "$game"__"$sysname"_beta_"$beta"_trial_"$trial"_chkpt 1>/dev/null 2>/dev/null &
                 sleep 5
             done
         done

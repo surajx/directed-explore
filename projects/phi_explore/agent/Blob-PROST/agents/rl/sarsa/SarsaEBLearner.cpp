@@ -313,7 +313,7 @@ void SarsaEBLearner::learnPolicy(ALEInterface& ale, Features* features) {
     updateQValues(F, Q);
     updateQIValues(F, QI);
 
-    currentAction = epsilonQIQ(Q, QI, episode);
+    currentAction = mixedQIQValues(Q, QI, episode);
     // currentAction = epsilonQI(Q, QI, episode);
     // currentAction = epsilonGreedy(Q, episode);
     // currentAction = Mathematics::argmax(Q, agentRand);
@@ -353,7 +353,7 @@ void SarsaEBLearner::learnPolicy(ALEInterface& ale, Features* features) {
         updateQValues(Fnext, Qnext);
         updateQIValues(Fnext, QInext);
 
-        nextAction = epsilonQIQ(Qnext, QInext, episode);
+        nextAction = mixedQIQValues(Qnext, QInext, episode);
         // nextAction = epsilonQI(Qnext, QInext, episode);
         // nextAction = epsilonGreedy(Qnext, episode);
         // nextAction = Mathematics::argmax(Qnext, agentRand);
