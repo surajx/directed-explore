@@ -2,7 +2,7 @@
 
 # Configure beta values, and games to be run here
 #################################################
-game_array=( montezuma_revenge venture ) #freeway frostbite qbert gravitar bank_heist alien )
+game_array=( montezuma_revenge venture frostbite qbert ) #freeway frostbite qbert gravitar bank_heist alien )
 beta_array=( 0.05 )
 #################################################
 

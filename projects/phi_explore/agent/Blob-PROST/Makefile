@@ -1,11 +1,12 @@
 # Makefile
 #
+# [FIX] Create bin dir when it doesnt exist (Suraj)
 # Author: Marlos C. Machado
 
 ALE := ../../ALE
 
 # Set this to 1 to enable SDL and display_screen
-USE_SDL := 1
+USE_SDL := 0
 
 # -O3 Optimize code (urns on all optimizations specified by -O2 and also turns on the -finline-functions, -funswitch-loops, -fpredictive-commoning, -fgcse-after-reload, -ftree-loop-vectorize, -ftree-slp-vectorize, -fvect-cost-model, -ftree-partial-pre and -fipa-cp-clone options).
 # -D__USE_SDL Ensures we can use SDL to see the game screen
@@ -14,6 +15,7 @@ USE_SDL := 1
 FLAGS := -O3 -I$(ALE)/src -L$(ALE) -lale -lz
 CXX := g++ -std=c++11
 OUT_FILE := learner
+MKDIR_P = mkdir -p
 # Search for library 'ale' and library 'z' when linking.
 LDFLAGS := -lale -lz -lm
 
@@ -22,7 +24,10 @@ ifeq ($(strip $(USE_SDL)), 1)
   LDFLAGS += -lSDL -lSDL_gfx -lSDL_image
 endif
 
-all: learnerBlobTime
+all: mk_bin learnerBlobTime
+
+mk_bin:
+	$(MKDIR_P) bin/
 
 cmp_link:
 	$(CXX) $(FLAGS) -c $(ARG1) -o bin/$(ARG2)
