@@ -1,4 +1,4 @@
-#Related Documents
+# Documents
 
 
 ### IJCAI Poster
