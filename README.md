@@ -5,3 +5,6 @@ We introduce a new count-based optimistic exploration algorithm for Reinforcemen
 [Paper](/documents/IJCAI_paper.pdf)
 [Poster](/documents/IJCAI_Poster.pdf)
 [Slides](/documents/IJCAI_slides.pdf)
+
+##### Agent Video (YouTube)
+[![Atari Gameplay video](http://img.youtube.com/vi/BoaWbdZphSI/0.jpg)](http://www.youtube.com/watch?v=BoaWbdZphSI)
